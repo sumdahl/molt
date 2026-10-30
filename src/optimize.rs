@@ -22,15 +22,22 @@ pub enum TaskId {
     AptAutoremove,
     DnfAutoremove,
     ZypperUnneeded,
+    /// OP-09 to OP-14: maintenance, after the packages.
+    Fstrim,
+    FontCache,
+    DnsCache,
 }
 
 impl TaskId {
-    /// OP-08: the order they run in.
-    pub const ALL: [Self; 4] = [
+    /// OP-08, OP-14: the order they run in.
+    pub const ALL: [Self; 7] = [
         Self::PacmanOrphans,
         Self::AptAutoremove,
         Self::DnfAutoremove,
         Self::ZypperUnneeded,
+        Self::Fstrim,
+        Self::FontCache,
+        Self::DnsCache,
     ];
 
     fn name(self) -> &'static str {
@@ -39,7 +46,15 @@ impl TaskId {
             Self::AptAutoremove => "Unneeded packages (apt)",
             Self::DnfAutoremove => "Unneeded packages (dnf)",
             Self::ZypperUnneeded => "Unneeded packages (zypper)",
+            Self::Fstrim => "TRIM: tell each SSD which blocks no file uses",
+            Self::FontCache => "Font cache: rebuild your out-of-date caches",
+            Self::DnsCache => "DNS cache: forget remembered answers",
         }
+    }
+
+    /// OP-11: your own font cache needs no root.
+    fn needs_sudo(self) -> bool {
+        self != Self::FontCache
     }
 
     fn tool(self) -> &'static str {
@@ -48,18 +63,25 @@ impl TaskId {
             Self::AptAutoremove => "apt-get",
             Self::DnfAutoremove => "dnf",
             Self::ZypperUnneeded => "zypper",
+            Self::Fstrim => "fstrim",
+            Self::FontCache => "fc-cache",
+            Self::DnsCache => "resolvectl",
         }
     }
 
-    /// OP-03: the read-only query that lists the packages.
-    fn query(self) -> &'static [&'static str] {
-        match self {
+    /// OP-03, OP-10: the read-only query, if the task has one.
+    fn query(self) -> Option<&'static [&'static str]> {
+        Some(match self {
             Self::PacmanOrphans => &["-Qdtq"],
             Self::AptAutoremove => &["-s", "autoremove"],
             // dnf 4 ends each with a newline and dnf 5 doesn't, so a space too.
             Self::DnfAutoremove => &["repoquery", "--unneeded", "--qf", "%{name} "],
             Self::ZypperUnneeded => &["--quiet", "packages", "--unneeded"],
-        }
+            // 015 Decisions: `fstrim --dry-run` sees no filesystems without root.
+            Self::Fstrim | Self::FontCache => return None,
+            // OP-12: it also tells whether systemd-resolved is running.
+            Self::DnsCache => &["statistics"],
+        })
     }
 
     /// The package names in the query's output, each once, in order.
@@ -78,6 +100,7 @@ impl TaskId {
                 .map(str::trim)
                 .filter(|name| *name != "Name")
                 .collect(),
+            Self::Fstrim | Self::FontCache | Self::DnsCache => Vec::new(),
         };
         let mut unique: Vec<String> = Vec::new();
         for name in names {
@@ -97,6 +120,10 @@ impl TaskId {
             Self::AptAutoremove => return invocation(tool, &["autoremove"], &[]),
             Self::DnfAutoremove => &["remove"],
             Self::ZypperUnneeded => &["remove", "--clean-deps"],
+            // OP-13: no --force or -f, and no paths from molt.
+            Self::Fstrim => &["--all", "--verbose"],
+            Self::FontCache => &[],
+            Self::DnsCache => &["flush-caches"],
         };
         invocation(tool, args, packages)
     }
@@ -109,6 +136,9 @@ impl fmt::Display for TaskId {
             Self::AptAutoremove => "apt-autoremove",
             Self::DnfAutoremove => "dnf-autoremove",
             Self::ZypperUnneeded => "zypper-unneeded",
+            Self::Fstrim => "fstrim",
+            Self::FontCache => "font-cache",
+            Self::DnsCache => "dns-cache",
         })
     }
 }
@@ -138,13 +168,13 @@ pub struct Tasks {
     pub inactive: Vec<TaskId>,
 }
 
-/// OP-02: without `sudo`, every task is inactive.
+/// OP-02, OP-11: without `sudo`, every task that needs it is inactive.
 pub fn detect(search_path: &[PathBuf]) -> Tasks {
     let sudo = find_tool("sudo", search_path);
     let (mut active, mut inactive) = (Vec::new(), Vec::new());
     for id in TaskId::ALL {
-        match (&sudo, find_tool(id.tool(), search_path)) {
-            (Some(_), Some(tool)) => active.push(Task { id, tool }),
+        match find_tool(id.tool(), search_path) {
+            Some(tool) if sudo.is_some() || !id.needs_sudo() => active.push(Task { id, tool }),
             _ => inactive.push(id),
         }
     }
@@ -180,10 +210,18 @@ pub enum Found {
     Failed(Option<i32>),
     /// OP-04: the first name that isn't one plain package name.
     Unsafe(String),
+    /// OP-10: a maintenance task that will run, with its preview's line if it has one.
+    Ready(Option<String>),
 }
 
-/// OP-04, OP-05: reads a finished query.
+/// OP-04, OP-05, OP-12: reads a finished query.
 fn found(id: TaskId, exit: Option<i32>, stdout: &str) -> Found {
+    if id == TaskId::DnsCache {
+        return match exit {
+            Some(0) => Found::Ready(cache_size(stdout)),
+            _ => Found::Failed(exit),
+        };
+    }
     let packages = id.packages(stdout);
     // pacman -Qdtq exits 1, printing nothing, when there are no orphans.
     let none_from_pacman = id == TaskId::PacmanOrphans && exit == Some(1) && packages.is_empty();
@@ -203,11 +241,19 @@ fn found(id: TaskId, exit: Option<i32>, stdout: &str) -> Found {
     }
 }
 
+/// OP-12: `resolvectl statistics`' "Current Cache Size" line, its spacing tidied.
+fn cache_size(stats: &str) -> Option<String> {
+    let line = stats
+        .lines()
+        .find(|line| line.contains("Current Cache Size"))?;
+    Some(line.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
 #[derive(Debug, Serialize)]
 pub struct TaskPreview {
     pub id: TaskId,
     pub name: &'static str,
-    pub query: String,
+    pub query: Option<String>,
     pub found: Found,
     /// The exact command a live run runs, when there's anything to remove.
     pub would_run: Option<String>,
@@ -233,31 +279,28 @@ pub fn preview(tasks: &Tasks, selected: &[Task], search_path: &[PathBuf]) -> Pre
     let previews = selected
         .iter()
         .map(|task| {
-            let query = invocation(&task.tool, task.id.query(), &[]);
-            let output = query
-                .command(search_path)
-                .stdin(Stdio::null())
-                .stderr(Stdio::inherit())
-                .output()
-                .ok();
-            let found = match &output {
-                Some(output) => found(
-                    task.id,
-                    output.status.code(),
-                    &String::from_utf8_lossy(&output.stdout),
-                ),
-                None => Found::Failed(None),
+            let query = task
+                .id
+                .query()
+                .map(|args| invocation(&task.tool, args, &[]));
+            let found = match &query {
+                Some(query) => run_query(task.id, query, search_path),
+                None => Found::Ready(None),
             };
-            let live = match (&found, &tasks.sudo) {
-                (Found::Packages(packages), Some(sudo)) => {
-                    Some(task.id.live(&task.tool, packages).under(sudo))
-                }
+            let live = match &found {
+                Found::Packages(packages) => Some(task.id.live(&task.tool, packages)),
+                Found::Ready(_) => Some(task.id.live(&task.tool, &[])),
                 _ => None,
-            };
+            }
+            .and_then(|run| match (task.id.needs_sudo(), &tasks.sudo) {
+                (false, _) => Some(run),
+                (true, Some(sudo)) => Some(run.under(sudo)),
+                (true, None) => None,
+            });
             TaskPreview {
                 id: task.id,
                 name: task.id.name(),
-                query: query.to_string(),
+                query: query.as_ref().map(ToString::to_string),
                 found,
                 would_run: live.as_ref().map(ToString::to_string),
                 live,
@@ -267,6 +310,22 @@ pub fn preview(tasks: &Tasks, selected: &[Task], search_path: &[PathBuf]) -> Pre
     Preview {
         tasks: previews,
         inactive: tasks.inactive.clone(),
+    }
+}
+
+fn run_query(id: TaskId, query: &Invocation, search_path: &[PathBuf]) -> Found {
+    match query
+        .command(search_path)
+        .stdin(Stdio::null())
+        .stderr(Stdio::inherit())
+        .output()
+    {
+        Ok(output) => found(
+            id,
+            output.status.code(),
+            &String::from_utf8_lossy(&output.stdout),
+        ),
+        Err(_) => Found::Failed(None),
     }
 }
 
@@ -322,10 +381,16 @@ impl fmt::Display for Preview {
                 Found::Nothing => writeln!(f, "    nothing to remove")?,
                 Found::Failed(exit) => {
                     let exit = exit.map_or("didn't run".to_owned(), |code| format!("exit {code}"));
-                    writeln!(f, "    `{}` failed ({exit})", task.query)?;
+                    let query = task.query.as_deref().unwrap_or_default();
+                    writeln!(f, "    left out: `{query}` failed ({exit})")?;
                 }
                 Found::Unsafe(name) => {
                     writeln!(f, "    left out: {name:?} isn't one plain package name")?;
+                }
+                Found::Ready(line) => {
+                    if let Some(line) = line {
+                        writeln!(f, "    preview: {line}")?;
+                    }
                 }
             }
             if let Some(command) = &task.would_run {

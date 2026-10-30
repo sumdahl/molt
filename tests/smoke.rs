@@ -2165,3 +2165,106 @@ fn op_01_op_02_op_08_tasks_are_picked_and_a_failure_doesnt_stop_the_next() {
     assert!(stdout(&out).contains("Inactive"), "{}", stdout(&out));
     assert!(!no_sudo.ran().contains("-Rns"));
 }
+
+const FAKE_RESOLVECTL: (&str, &str) = (
+    "resolvectl",
+    "[ \"$1\" = statistics ] && printf 'Cache\\n   Current Cache Size:  7\\n'; exit 0",
+);
+
+#[test]
+fn op_09_op_10_p_05_a_dry_run_runs_only_the_dns_statistics() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let tools = FakeTools::new(&[
+        FAKE_SUDO,
+        ("fstrim", "exit 0"),
+        ("fc-cache", "exit 0"),
+        FAKE_RESOLVECTL,
+    ]);
+    let bin = tools.bin();
+
+    let out = home.molt(&["optimize", "--dry-run"], &[("PATH", bin)]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(
+        text.contains(&format!(
+            "would run: {bin}/sudo -- {bin}/fstrim --all --verbose\n"
+        )),
+        "{text}"
+    );
+    assert!(
+        text.contains(&format!("would run: {bin}/fc-cache\n")),
+        "{text}"
+    );
+    assert!(text.contains("Current Cache Size: 7"), "{text}");
+    assert!(
+        text.contains(&format!(
+            "would run: {bin}/sudo -- {bin}/resolvectl flush-caches\n"
+        )),
+        "{text}"
+    );
+    assert_eq!(tools.ran(), "resolvectl statistics\n");
+}
+
+#[test]
+fn op_11_op_14_yes_runs_each_in_order_and_font_cache_without_sudo() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let tools = FakeTools::new(&[
+        FAKE_SUDO,
+        ("fstrim", "exit 1"),
+        ("fc-cache", "exit 0"),
+        FAKE_RESOLVECTL,
+    ]);
+    let bin = tools.bin();
+
+    let out = home.molt(&["optimize", "--yes"], &[("PATH", bin)]);
+    assert_eq!(
+        out.status.code(),
+        Some(3),
+        "fstrim failed: {}",
+        stderr(&out)
+    );
+    let ran = tools.ran();
+    let live: Vec<&str> = ran
+        .lines()
+        .filter(|line| *line != "resolvectl statistics")
+        .collect();
+    assert_eq!(
+        live,
+        [
+            format!("sudo -- {bin}/fstrim --all --verbose").as_str(),
+            "fstrim --all --verbose",
+            "fc-cache",
+            &format!("sudo -- {bin}/resolvectl flush-caches"),
+            "resolvectl flush-caches",
+        ]
+    );
+}
+
+#[test]
+fn op_02_op_11_op_12_without_sudo_only_font_cache_and_no_resolved_no_dns() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let tools = FakeTools::new(&[
+        ("fstrim", "exit 0"),
+        ("fc-cache", "exit 0"),
+        FAKE_RESOLVECTL,
+    ]);
+    let out = home.molt(&["optimize", "--yes"], &[("PATH", tools.bin())]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(tools.ran(), "fc-cache\n");
+    assert!(stdout(&out).contains("Inactive"), "{}", stdout(&out));
+
+    let tools = FakeTools::new(&[FAKE_SUDO, ("resolvectl", "exit 1")]);
+    let out = home.molt(&["optimize", "--yes"], &[("PATH", tools.bin())]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("left out"), "{}", stdout(&out));
+    assert!(!tools.ran().contains("flush-caches"), "{}", tools.ran());
+}

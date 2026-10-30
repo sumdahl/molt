@@ -69,3 +69,30 @@ fn op_06_the_live_command_names_the_listed_packages_and_never_skips_the_question
         );
     }
 }
+
+#[test]
+fn op_10_op_11_op_13_maintenance_commands_are_exact_and_font_cache_needs_no_sudo() {
+    let tool = Path::new("/usr/bin/tool");
+    let live = |id: TaskId| id.live(tool, &[]).args;
+    assert_eq!(live(TaskId::Fstrim), ["--all", "--verbose"]);
+    assert!(live(TaskId::FontCache).is_empty());
+    assert_eq!(live(TaskId::DnsCache), ["flush-caches"]);
+    for id in [TaskId::Fstrim, TaskId::FontCache, TaskId::DnsCache] {
+        assert!(
+            !live(id).iter().any(|arg| arg == "-f" || arg == "--force"),
+            "{id}"
+        );
+    }
+    assert!(!TaskId::FontCache.needs_sudo());
+    assert!(TaskId::ALL.iter().filter(|id| !id.needs_sudo()).count() == 1);
+}
+
+#[test]
+fn op_12_the_dns_preview_is_the_cache_size_line_and_a_failure_leaves_it_out() {
+    let stats = "Cache\n                         Current Cache Size:  43\n    Cache Hits: 242\n";
+    assert_eq!(
+        found(TaskId::DnsCache, Some(0), stats),
+        Found::Ready(Some("Current Cache Size: 43".to_owned()))
+    );
+    assert_eq!(found(TaskId::DnsCache, Some(1), ""), Found::Failed(Some(1)));
+}
