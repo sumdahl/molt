@@ -1,6 +1,6 @@
 # 011: Locked folders
 
-Status: Accepted
+Status: Implemented
 Prefix: LF
 
 ## Goal

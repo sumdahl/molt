@@ -4,7 +4,7 @@ Reclaim disk space on Linux, safely.
 
 molt finds what is filling your disk (caches, build artifacts, old packages, installers, leftovers from removed apps), shows you exactly what it would remove, and removes only what it can prove is safe to remove. It works on any Linux distribution, with extra rules for pacman, apt, dnf, zypper, flatpak and snap.
 
-> **Status: pre-release.** `molt scan` works and only reads. The commands that clean are being built spec-first. Nothing in this version deletes files.
+> **Status: pre-release.** `molt scan` and `molt clean` work. Other commands are being built spec-first.
 
 ## Commands
 
@@ -22,11 +22,27 @@ Total: 22.5 GiB can be freed with `molt clean`.
 
 `molt scan --json` prints every path, its size, and anything skipped and why.
 
+`molt clean` frees that space. It always shows the full preview first, asks once (default no), and then:
+
+- runs a tool's own cleanup command where it has one (`npm cache clean --force`), and never also deletes that tool's files,
+- leaves alone the cache of any program that is running,
+- skips anything that changed since the preview,
+- reports what it freed, and logs every change to `~/.local/state/molt/operations.log`.
+
+```sh
+molt clean --dry-run               # the preview only
+molt clean --only npm-cache        # just one rule
+molt clean --skip maven-repository # everything but one
+molt clean --yes                   # no question (the preview is still printed)
+molt clean --trash                 # move to the trash instead of deleting
+```
+
+Folders you own but can't read (makepkg leaves these in AUR caches) are kept unless you agree to open them: molt asks, or pass `--fix-permissions`. `--yes` alone never opens them.
+
 ### Planned
 
 | Command | What it does |
 |---|---|
-| `molt clean` | Remove caches, logs and temp files: user, browser, developer tools, package managers |
 | `molt purge` | Remove rebuildable project artifacts (`target`, `node_modules`, `build`…) |
 | `molt installer` | Find leftover `.deb` / `.rpm` / `.AppImage` / `.iso` files |
 | `molt analyze` | Interactive disk explorer |

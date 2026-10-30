@@ -218,6 +218,33 @@ impl fmt::Display for PlanRefused {
 
 impl std::error::Error for PlanRefused {}
 
+/// The operation log for owning-tool commands (CN-12). Open it before running a command,
+/// so a log that can't be written stops molt before anything changes (SD-15).
+pub struct CommandLog(Option<oplog::OpLog>);
+
+impl CommandLog {
+    pub fn open(ctx: &Context) -> Result<Self, PlanRefused> {
+        match &ctx.oplog {
+            None => Ok(Self(None)),
+            Some(path) => oplog::OpLog::open(path)
+                .map(|log| Self(Some(log)))
+                .map_err(|e| PlanRefused::OpLog(Errno::from_io_error(&e).unwrap_or(Errno::IO))),
+        }
+    }
+
+    pub fn record(
+        &mut self,
+        command: &[String],
+        exit: Option<i32>,
+        bytes: u64,
+    ) -> std::io::Result<()> {
+        match &mut self.0 {
+            Some(log) => log.record_command(command, exit, bytes),
+            None => Ok(()),
+        }
+    }
+}
+
 /// Carries out `plan`, one candidate at a time. A failure on one candidate never stops
 /// the others (SD-14); only a failed log write does (SD-15).
 pub fn execute(plan: &Plan, ctx: &Context) -> Result<Report, PlanRefused> {
