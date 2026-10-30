@@ -496,7 +496,6 @@ pub fn act(
         commands.push(CommandRun {
             command: run.to_string(),
             exit,
-            summary: None,
         });
     }
     Ok(OptimizeResult { commands })

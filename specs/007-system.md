@@ -1,6 +1,6 @@
 # 007: `onyx system`
 
-Status: Implemented; SY-03, SY-04 amended and SY-12, SY-13 added in Draft (#82)
+Status: Implemented (SY-03, SY-04 amended and SY-12, SY-13 added in #82)
 Prefix: SY
 
 ## Goal
@@ -81,4 +81,5 @@ Prefix: SY
 - **A separate command.** `sudo` never appears in `clean`.
 - **pacman keeps two versions** of installed packages (`-rk2`) and drops uninstalled ones (`-ruk0`).
 - **The journal is trimmed to 500 MiB.**
+- **Would-free is accepted as drafted** (maintainer, 2026-10-31, #82).
 - **Coredumps follow the system's own age rule** through `systemd-tmpfiles`. onyx decides nothing about them and deletes nothing as root.

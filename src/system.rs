@@ -204,17 +204,67 @@ pub struct CommandRun {
     pub command: String,
     /// `None` when the command couldn't start or was killed by a signal.
     pub exit: Option<i32>,
-    /// The last line it printed (SY-03).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub summary: Option<String>,
+}
+
+/// SY-03: what a read-only preview printed, stdout then stderr, without blank lines.
+#[derive(Debug, Serialize)]
+pub struct PreviewOutput {
+    pub command: String,
+    /// `None` when the command couldn't start or was killed by a signal.
+    pub exit: Option<i32>,
+    pub lines: Vec<String>,
+}
+
+/// SY-03: at most this many of a preview's lines are shown.
+const SHOWN_LINES: usize = 10;
+
+/// SY-12: what a task's live commands would remove, worked out before they run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WouldFree {
+    Exactly(u64),
+    About(u64),
+    NotKnown,
+}
+
+impl WouldFree {
+    fn bytes(self) -> Option<u64> {
+        match self {
+            Self::Exactly(bytes) | Self::About(bytes) => Some(bytes),
+            Self::NotKnown => None,
+        }
+    }
+}
+
+impl fmt::Display for WouldFree {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Exactly(bytes) => f.write_str(&human_size(*bytes)),
+            Self::About(bytes) => write!(f, "about {}", human_size(*bytes)),
+            Self::NotKnown => f.write_str("not known"),
+        }
+    }
+}
+
+/// SY-13: `"would_free"` as bytes or `null`, and `"estimate"`.
+impl Serialize for WouldFree {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(2))?;
+        map.serialize_entry("would_free", &self.bytes())?;
+        map.serialize_entry("estimate", &matches!(self, Self::About(_)))?;
+        map.end()
+    }
 }
 
 #[derive(Debug, Serialize)]
 pub struct TaskPreview {
     pub id: TaskId,
     pub name: &'static str,
+    /// SY-03: the size now.
     pub bytes: u64,
-    pub previews: Vec<CommandRun>,
+    #[serde(flatten)]
+    pub would_free: WouldFree,
+    pub previews: Vec<PreviewOutput>,
     /// The exact command lines a live run runs.
     pub would_run: Vec<String>,
 }
@@ -225,27 +275,76 @@ pub struct Preview {
     pub inactive: Vec<TaskId>,
 }
 
+/// SY-12: the journal is trimmed to this.
+const JOURNAL_LIMIT: u64 = 500 * 1024 * 1024;
+
+/// SY-12
+fn would_free(id: TaskId, bytes: u64, previews: &[PreviewOutput], root: &Path) -> WouldFree {
+    match id {
+        TaskId::PacmanCache => previews
+            .iter()
+            .map(|run| run.lines.iter().find_map(|line| paccache_saved(line)))
+            .sum::<Option<u64>>()
+            .map_or(WouldFree::NotKnown, WouldFree::Exactly),
+        TaskId::Journal => WouldFree::About(bytes.saturating_sub(JOURNAL_LIMIT)),
+        TaskId::Coredumps => {
+            let folder = root.join(id.folders()[0].trim_start_matches('/'));
+            let empty = fs::read_dir(folder).map_or(true, |mut entries| entries.next().is_none());
+            if empty {
+                WouldFree::Exactly(0)
+            } else {
+                WouldFree::NotKnown
+            }
+        }
+    }
+}
+
+/// SY-12: paccache's `disk space saved: 6.37 MiB`, or 0 for `no candidate packages`.
+fn paccache_saved(line: &str) -> Option<u64> {
+    if line.contains("no candidate packages found") {
+        return Some(0);
+    }
+    let (_, after) = line.split_once("disk space saved: ")?;
+    let mut words = after.trim_end_matches(')').split_whitespace();
+    let number: f64 = words.next()?.parse().ok()?;
+    let unit = match words.next()? {
+        "B" => 1.0,
+        "KiB" => 1024.0,
+        "MiB" => 1024.0 * 1024.0,
+        "GiB" => 1024.0 * 1024.0 * 1024.0,
+        "TiB" => 1024.0 * 1024.0 * 1024.0 * 1024.0,
+        _ => return None,
+    };
+    // A size is never negative, and the cast saturates at u64's range.
+    Some((number * unit).round().max(0.0) as u64)
+}
+
 /// SY-03, SY-04: measures each task under `root` and runs its read-only previews.
 pub fn preview(tasks: &Tasks, selected: &[Task], root: &Path, search_path: &[PathBuf]) -> Preview {
     let tasks_preview = selected
         .iter()
-        .map(|task| TaskPreview {
-            id: task.id,
-            name: task.id.name(),
-            bytes: size(task.id, root),
-            previews: task
+        .map(|task| {
+            let bytes = size(task.id, root);
+            let previews: Vec<PreviewOutput> = task
                 .previews
                 .iter()
                 .map(|run| run_preview(run, search_path))
-                .collect(),
-            would_run: match &tasks.sudo {
-                Some(sudo) => task
-                    .commands
-                    .iter()
-                    .map(|run| run.under(sudo).to_string())
-                    .collect(),
-                None => Vec::new(),
-            },
+                .collect();
+            TaskPreview {
+                id: task.id,
+                name: task.id.name(),
+                bytes,
+                would_free: would_free(task.id, bytes, &previews, root),
+                previews,
+                would_run: match &tasks.sudo {
+                    Some(sudo) => task
+                        .commands
+                        .iter()
+                        .map(|run| run.under(sudo).to_string())
+                        .collect(),
+                    None => Vec::new(),
+                },
+            }
         })
         .collect();
     Preview {
@@ -254,27 +353,27 @@ pub fn preview(tasks: &Tasks, selected: &[Task], root: &Path, search_path: &[Pat
     }
 }
 
-/// SY-04: no shell, no sudo, stdin closed; the output is echoed to stderr.
-fn run_preview(run: &Invocation, search_path: &[PathBuf]) -> CommandRun {
+/// SY-04: no shell, no sudo, stdin closed; the output is kept for the preview only.
+fn run_preview(run: &Invocation, search_path: &[PathBuf]) -> PreviewOutput {
     let output = run.command(search_path).stdin(Stdio::null()).output().ok();
-    if let Some(output) = &output {
-        eprint!("{}", String::from_utf8_lossy(&output.stdout));
-        eprint!("{}", String::from_utf8_lossy(&output.stderr));
-    }
-    CommandRun {
+    let lines = output.as_ref().map_or_else(Vec::new, |output| {
+        [&output.stdout, &output.stderr]
+            .into_iter()
+            .flat_map(|bytes| {
+                String::from_utf8_lossy(bytes)
+                    .lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    });
+    PreviewOutput {
         command: run.to_string(),
         exit: output.as_ref().and_then(|output| output.status.code()),
-        summary: output
-            .and_then(|output| last_line(&output.stdout).or_else(|| last_line(&output.stderr))),
+        lines,
     }
-}
-
-fn last_line(bytes: &[u8]) -> Option<String> {
-    String::from_utf8_lossy(bytes)
-        .lines()
-        .map(str::trim)
-        .rfind(|line| !line.is_empty())
-        .map(str::to_owned)
 }
 
 #[derive(Debug, Serialize)]
@@ -342,7 +441,6 @@ pub fn act(
                 .map(|(run, exit)| CommandRun {
                     command: run.to_string(),
                     exit,
-                    summary: None,
                 })
                 .collect(),
         });
@@ -405,17 +503,22 @@ impl fmt::Display for Preview {
             writeln!(f, "No system tasks to run.")?;
         }
         for task in &self.tasks {
-            writeln!(f, "  {:<42}{:>10}", task.name, human_size(task.bytes))?;
+            writeln!(
+                f,
+                "  {:<26}now {:>10}   would free {}",
+                task.name,
+                human_size(task.bytes),
+                task.would_free
+            )?;
             for run in &task.previews {
-                match (&run.exit, &run.summary) {
-                    (Some(0), Some(summary)) => writeln!(f, "    preview: {summary}")?,
-                    (Some(0), None) => writeln!(f, "    preview: nothing to remove")?,
-                    _ => writeln!(f, "    preview `{}` failed", run.command)?,
-                }
+                write_preview(f, run)?;
             }
             for command in &task.would_run {
                 writeln!(f, "    would run: {command}")?;
             }
+        }
+        if !self.tasks.is_empty() {
+            writeln!(f, "{}", Total::of(&self.tasks))?;
         }
         if !self.inactive.is_empty() {
             let ids: Vec<String> = self.inactive.iter().map(ToString::to_string).collect();
@@ -426,6 +529,60 @@ impl fmt::Display for Preview {
             )?;
         }
         Ok(())
+    }
+}
+
+/// SY-03: every line, up to `SHOWN_LINES`, then how many more.
+fn write_preview(f: &mut fmt::Formatter<'_>, run: &PreviewOutput) -> fmt::Result {
+    if run.exit != Some(0) {
+        writeln!(f, "    preview `{}` failed", run.command)?;
+    } else if run.lines.is_empty() {
+        writeln!(f, "    preview: nothing to remove")?;
+    }
+    for line in run.lines.iter().take(SHOWN_LINES) {
+        writeln!(f, "    preview: {line}")?;
+    }
+    let more = run.lines.len().saturating_sub(SHOWN_LINES);
+    if more > 0 {
+        writeln!(f, "    preview: … {more} more lines")?;
+    }
+    Ok(())
+}
+
+/// SY-13: the tasks' `would free` together.
+struct Total {
+    bytes: u64,
+    estimate: bool,
+    not_known: Vec<&'static str>,
+}
+
+impl Total {
+    fn of(tasks: &[TaskPreview]) -> Self {
+        Self {
+            bytes: tasks
+                .iter()
+                .filter_map(|task| task.would_free.bytes())
+                .sum(),
+            estimate: tasks
+                .iter()
+                .any(|task| matches!(task.would_free, WouldFree::About(_))),
+            not_known: tasks
+                .iter()
+                .filter(|task| task.would_free == WouldFree::NotKnown)
+                .map(|task| task.name)
+                .collect(),
+        }
+    }
+}
+
+impl fmt::Display for Total {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let about = if self.estimate { "about " } else { "" };
+        write!(f, "Would free {about}{} in total", human_size(self.bytes))?;
+        if !self.not_known.is_empty() {
+            write!(f, " ({} not known)", self.not_known.join(", "))?;
+        }
+        write!(f, ".")
     }
 }
 

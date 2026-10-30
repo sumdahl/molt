@@ -3146,3 +3146,29 @@ fn help_says_what_onyx_and_uninstall_do() {
     );
     assert!(!help.contains("left to your package manager"), "{help}");
 }
+
+#[test]
+fn sy_04_preview_output_is_shown_once_inside_the_preview() {
+    if is_root() {
+        return eprintln!("skipped: onyx refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let tools = FakeTools::new(&[
+        FAKE_SUDO,
+        (
+            "paccache",
+            "echo 'out line'\necho 'err line' >&2\necho '(disk space saved: 1.00 MiB)'",
+        ),
+    ]);
+    let out = home.onyx(&["system", "--dry-run"], &[("PATH", tools.bin())]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let (text, err) = (stdout(&out), stderr(&out));
+    assert!(
+        !err.contains("out line") && !err.contains("err line"),
+        "{err}"
+    );
+    assert_eq!(text.matches("preview: out line").count(), 2, "{text}");
+    assert_eq!(text.matches("preview: err line").count(), 2, "{text}");
+    assert!(text.contains("would free 2.0 MiB"), "{text}");
+    assert!(text.contains("Would free 2.0 MiB in total."), "{text}");
+}

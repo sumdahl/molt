@@ -55,7 +55,7 @@ What this spec deliberately leaves out.
 | 004 | [CLI skeleton](004-cli.md) | CL | Implemented |
 | 005 | [`onyx scan`](005-scan.md) | SC | Implemented |
 | 006 | [`onyx clean`](006-clean.md) | CN | Implemented |
-| 007 | [`onyx system`](007-system.md) | SY | Implemented; amendment Draft (#82) |
+| 007 | [`onyx system`](007-system.md) | SY | Implemented |
 | 008 | [`onyx purge`](008-purge.md) | PG | Implemented |
 | 009 | [`onyx installer`](009-installer.md) | IN | Implemented |
 | 010 | [Built-in rules](010-built-in-rules.md) | BR | Implemented |
