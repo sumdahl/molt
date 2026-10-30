@@ -22,6 +22,12 @@ These rules hold for every command molt has or will have. A feature spec may add
 
   Every command spec must include a requirement, with a test, that its dry run leaves a snapshot of the fake home unchanged and starts no mutating external command.
 - **P-06 Confirm before mutating.** Interactive runs show what will be removed, with sizes, and wait for confirmation. Non-interactive runs require `--yes`.
+- **P-14 Dry run first, always.** Every operation that changes anything runs as a dry run first, and a live run only carries out what that dry run showed.
+  - A live run starts with a dry run of the same plan and shows its result: every item, its size, and what would happen to it. Only then does it ask (P-06) and act.
+  - `--yes` skips the question, never the preview. The preview is printed before anything changes, in `--json` too.
+  - The live run acts only on items the preview showed. Anything that changed in between is skipped (SD-08, SD-10), never added.
+  - This holds for every kind of change: removing, trashing, changing permissions (011), and running an owning tool's command (P-07), whose exact command line is shown first.
+  - Each command spec must include a test that its live run prints the preview before the first change.
 - **P-07 Ask the owning tool first.** When a tool has its own cleanup command (`paccache`, `npm cache clean`, `docker system prune`, `journalctl --vacuum-*`, `flatpak uninstall --unused`, `uv cache clean`…), molt runs that command instead of deleting the tool's files directly.
 - **P-08 Don't clean what's in use.** A rule may name the processes that own its data. molt skips the rule while any of those processes is running.
 - **P-09 Log every change.** Every mutation is appended to `$XDG_STATE_HOME/molt/operations.log` (one JSON object per line). `MOLT_NO_OPLOG=1` disables the log.
