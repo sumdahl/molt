@@ -6,6 +6,9 @@ The release workflow publishes the section matching the pushed tag as the GitHub
 
 ## [Unreleased]
 
+### Fixed
+- `onyx --help` again says "Reclaim disk space on Linux, safely" instead of the crates.io description, and `uninstall`'s help says it also removes the app's package through its own manager.
+
 ## [0.3.0] - 2026-10-31
 
 ### Added
