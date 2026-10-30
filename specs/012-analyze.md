@@ -1,6 +1,6 @@
 # 012: `molt analyze`
 
-Status: Implemented (AN-01 to AN-17); Accepted (AN-18 to AN-24, #35)
+Status: Implemented
 Prefix: AN
 
 ## Goal
@@ -54,7 +54,7 @@ The first and only way the browser changes anything. It goes through safe delete
 - **AN-18** `Space` marks or unmarks the selected entry and moves down. Marked entries show a `*`, and the bottom line shows how many are marked and their total size. Marks stay while moving between folders.
 - **AN-19** Each mark records the entry as it is now (`Candidate::scan`: device, inode, type, mtime), so anything that changes before the trash step is skipped (SD-08, SD-10).
 - **AN-20** `d` trashes the marked entries, or the selected entry if none are marked. It first runs a safe-delete dry run of exactly those entries, in trash mode, and shows its full result on screen: each entry, its size, and what would happen to it, including any refused (`protected`, `whitelisted`) or skipped, with the reason.
-- **AN-21** Below that preview, molt asks "Move N items (SIZE) to the trash? [y/N]". Only `y` goes ahead. Any other key goes back to the browser with nothing changed and the marks kept.
+- **AN-21** Below that preview, molt asks "Move N items (SIZE) to the trash? [y/N]". Only `y` goes ahead. Any other key goes back to the browser with nothing changed and the marks kept. In a dry run (`--dry-run`, the config or `MOLT_DRY_RUN`, CF-07), the preview ends with "Dry run, so nothing moved" and the reason, and there is no question (P-05).
 - **AN-22** After `y`, one live safe-delete plan in trash mode runs over the same candidates. The screen then shows the result per entry (trashed, skipped or failed, with the reason), the marks are cleared, and the folders above the changed entries are measured again (as `r`).
 - **AN-23** Nothing is ever deleted permanently from the browser: there is no key for it, and the plan's mode is always trash (SD-11). An entry the trash can't take (`no-trash`) is reported and kept.
 - **AN-24** Every trashed entry is in the operation log (SD-15). A log that can't be opened stops the step before anything moves, and says so on screen.

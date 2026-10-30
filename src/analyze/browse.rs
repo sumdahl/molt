@@ -4,6 +4,8 @@
 use std::path::PathBuf;
 
 use super::{EntryKind, Node, share, size, suffix};
+use crate::safe_delete::Candidate;
+use crate::scan::human_size;
 
 #[cfg(test)]
 mod tests;
@@ -22,6 +24,10 @@ pub enum Key {
     Sort,
     Refresh,
     Help,
+    /// AN-18
+    Mark,
+    /// AN-20
+    Trash,
     Quit,
 }
 
@@ -42,6 +48,8 @@ pub fn keys(bytes: &[u8]) -> Vec<Key> {
             b's' => Key::Sort,
             b'r' => Key::Refresh,
             b'?' => Key::Help,
+            b' ' => Key::Mark,
+            b'd' => Key::Trash,
             // Raw mode turns Ctrl-C into a byte, so it never kills molt mid-draw.
             b'q' | 0x03 => Key::Quit,
             0x1b => match escape(rest) {
@@ -96,6 +104,10 @@ pub enum Effect {
     Load(PathBuf),
     /// Measure this folder again, then call `Browser::replace`.
     Measure(PathBuf),
+    /// AN-19: record this entry (`Candidate::scan`), then call `Browser::mark`.
+    Mark(PathBuf),
+    /// AN-20: preview and trash `Browser::picked`.
+    Trash,
     Quit,
 }
 
@@ -123,6 +135,14 @@ pub struct Browser {
     help: bool,
     /// Rows the entry list has, set by the terminal side.
     rows: usize,
+    /// AN-18, AN-19: marked entries, as they were when marked, in marking order.
+    marks: Vec<Marked>,
+}
+
+#[derive(Debug, Clone)]
+struct Marked {
+    candidate: Candidate,
+    bytes: u64,
 }
 
 impl Browser {
@@ -142,16 +162,14 @@ impl Browser {
             order: Order::Size,
             help: false,
             rows: 10,
+            marks: Vec::new(),
         };
         browser.show(files);
         browser
     }
 
     pub fn path(&self) -> PathBuf {
-        self.view
-            .trail
-            .iter()
-            .fold(self.root.clone(), |path, name| path.join(name))
+        self.path_of(&self.view.trail)
     }
 
     pub fn set_rows(&mut self, rows: usize) {
@@ -169,9 +187,16 @@ impl Browser {
     /// carries the change in size up to the folders above.
     pub fn replace(&mut self, fresh: Node, files: Vec<Node>) {
         let trail = self.view.trail.clone();
+        self.replace_at(&trail, fresh);
+        self.show(files);
+    }
+
+    /// The folder `trail` names, measured again as `fresh`; the folders above it gain
+    /// the change in size. The current view is rebuilt from the tree.
+    pub fn replace_at(&mut self, trail: &[String], fresh: Node) {
         let mut node = &mut self.tree;
-        let old = folder(node, &trail).map_or(0, |found| found.bytes);
-        for name in &trail {
+        let old = folder(node, trail).map_or(0, |found| found.bytes);
+        for name in trail {
             // Each folder above loses the old size and gains the new.
             node.bytes = node.bytes.saturating_sub(old) + fresh.bytes;
             let Some(next) = child_mut(node, name) else {
@@ -182,7 +207,14 @@ impl Browser {
         let name = std::mem::take(&mut node.name);
         *node = fresh;
         node.name = name;
-        self.show(files);
+        self.rebuild();
+    }
+
+    /// The path a trail names.
+    pub fn path_of(&self, trail: &[String]) -> PathBuf {
+        trail
+            .iter()
+            .fold(self.root.clone(), |path, name| path.join(name))
     }
 
     pub fn press(&mut self, key: Key) -> Effect {
@@ -214,10 +246,96 @@ impl Browser {
             }
             Key::Refresh => return Effect::Measure(self.path()),
             Key::Help => self.help = true,
+            Key::Mark => return self.toggle_mark(),
+            Key::Trash if self.marks.is_empty() && self.view.entries.is_empty() => {}
+            Key::Trash => return Effect::Trash,
             Key::Quit => return Effect::Quit,
         }
         self.scroll();
         Effect::Redraw
+    }
+
+    /// AN-18: unmarks the selected entry if it's marked; otherwise asks for it to be
+    /// recorded. Either way the selection moves down.
+    fn toggle_mark(&mut self) -> Effect {
+        let Some(path) = self.selected_path() else {
+            return Effect::Redraw;
+        };
+        let before = self.marks.len();
+        self.marks.retain(|mark| mark.candidate.path() != path);
+        if self.marks.len() < before {
+            self.press(Key::Down);
+            return Effect::Redraw;
+        }
+        Effect::Mark(path)
+    }
+
+    /// AN-19: keeps `candidate`, recorded just now, as a mark, and moves down.
+    pub fn mark(&mut self, candidate: Candidate) {
+        let bytes = self
+            .view
+            .entries
+            .iter()
+            .find(|entry| self.path().join(&entry.name) == candidate.path())
+            .map_or(0, |entry| entry.bytes);
+        self.marks.push(Marked { candidate, bytes });
+        self.press(Key::Down);
+    }
+
+    /// AN-20: what `d` trashes: the marks, or else the selected entry.
+    pub fn picked(&self) -> Vec<Candidate> {
+        if self.marks.is_empty() {
+            return self
+                .selected_path()
+                .and_then(|path| Candidate::scan(path).ok())
+                .into_iter()
+                .collect();
+        }
+        self.marks
+            .iter()
+            .map(|mark| mark.candidate.clone())
+            .collect()
+    }
+
+    /// AN-22: after the trash step, the marks are gone.
+    pub fn clear_marks(&mut self) {
+        self.marks.clear();
+    }
+
+    /// AN-22: the deepest folder holding every picked path, as names under the start.
+    pub fn common_trail(&self, paths: &[PathBuf]) -> Vec<String> {
+        let mut trail: Option<Vec<String>> = None;
+        for path in paths {
+            let Ok(below) = path.strip_prefix(&self.root) else {
+                return Vec::new();
+            };
+            let mut names: Vec<String> = below
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect();
+            // The folder holding it, not the item itself.
+            names.pop();
+            trail = Some(match trail {
+                None => names,
+                Some(common) => common
+                    .into_iter()
+                    .zip(names)
+                    .take_while(|(a, b)| a == b)
+                    .map(|(a, _)| a)
+                    .collect(),
+            });
+        }
+        trail.unwrap_or_default()
+    }
+
+    fn selected_path(&self) -> Option<PathBuf> {
+        let entry = self.view.entries.get(self.view.selected)?;
+        Some(self.path().join(&entry.name))
+    }
+
+    fn is_marked(&self, entry: &Node) -> bool {
+        let path = self.path().join(&entry.name);
+        self.marks.iter().any(|mark| mark.candidate.path() == path)
     }
 
     fn open(&mut self) -> Effect {
@@ -320,7 +438,14 @@ impl Browser {
                 .skip(self.view.top)
                 .take(rows)
             {
-                let line = row(entry, current.bytes, width);
+                let mark = if self.is_marked(entry) { '*' } else { ' ' };
+                let line = fit(
+                    &format!(
+                        "{mark}{}",
+                        row(entry, current.bytes, width.saturating_sub(1))
+                    ),
+                    width,
+                );
                 lines.push(if index == self.view.selected {
                     format!("\x1b[7m{line}\x1b[0m")
                 } else {
@@ -339,15 +464,23 @@ impl Browser {
             Order::Size => "by size",
             Order::Name => "by name",
         };
+        let marked = if self.marks.is_empty() {
+            String::new()
+        } else {
+            let bytes: u64 = self.marks.iter().map(|mark| mark.bytes).sum();
+            format!("{} marked, {}  ·  ", self.marks.len(), human_size(bytes))
+        };
         lines.push(fit(
-            &format!("{order}  ·  j/k move  l open  h up  s sort  r refresh  ? help  q quit"),
+            &format!(
+                "{marked}{order}  ·  j/k move  l open  h up  space mark  d trash  ? help  q quit"
+            ),
             width,
         ));
         lines
     }
 }
 
-const HELP: [&str; 9] = [
+const HELP: [&str; 11] = [
     "",
     "  j k ↓ ↑        move",
     "  g G Home End   first, last",
@@ -356,6 +489,8 @@ const HELP: [&str; 9] = [
     "  h ← Backspace  go up",
     "  s              sort by size or name",
     "  r              measure this folder again",
+    "  Space          mark or unmark, then move down",
+    "  d              move the marked items (or this one) to the trash, after a preview",
     "  q Ctrl-C       quit (any other key closes this help)",
 ];
 

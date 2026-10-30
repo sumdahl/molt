@@ -214,3 +214,100 @@ fn an_16_long_names_are_shortened_in_the_middle() {
     assert_eq!(shorten("abcdef", 1), "…");
     assert_eq!(shorten("abcdef", 0), "");
 }
+
+/// A browser over a real temp folder, so marks can record real candidates.
+fn on_disk() -> (tempfile::TempDir, Browser) {
+    let dir = tempfile::TempDir::new().unwrap();
+    let root = dir.path().to_owned();
+    std::fs::create_dir(root.join("big")).unwrap();
+    std::fs::write(root.join("notes"), b"x").unwrap();
+    let tree = folder_node(
+        &root.to_string_lossy(),
+        1000,
+        vec![folder_node("big", 600, Vec::new())],
+    );
+    let browser = Browser::new(root, tree, vec![file("notes", 300)]);
+    (dir, browser)
+}
+
+fn mark_selected(browser: &mut Browser) {
+    match browser.press(Key::Mark) {
+        Effect::Mark(path) => browser.mark(Candidate::scan(path).unwrap()),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn an_18_space_and_d_are_mark_and_trash() {
+    assert_eq!(keys(b" d"), [Key::Mark, Key::Trash]);
+}
+
+#[test]
+fn an_18_an_19_marks_toggle_show_and_stay_across_folders() {
+    let (_dir, mut browser) = on_disk();
+    mark_selected(&mut browser);
+    assert_eq!(selected(&browser), "notes", "marking moves down");
+    let lines = browser.lines(80, 6);
+    assert!(lines[1].contains("*"), "{lines:?}");
+    assert!(lines[5].starts_with("1 marked, 600 B"), "{lines:?}");
+
+    browser.press(Key::Up);
+    assert_eq!(
+        browser.press(Key::Mark),
+        Effect::Redraw,
+        "unmarking needs no scan"
+    );
+    assert!(
+        browser.picked().len() == 1,
+        "nothing marked: the selection is picked"
+    );
+    assert!(!browser.lines(80, 6)[5].contains("marked"));
+
+    // Unmarking moved down too, so this marks `notes`; then visit big/ and come back.
+    assert_eq!(selected(&browser), "notes");
+    mark_selected(&mut browser);
+    browser.press(Key::First);
+    browser.press(Key::Open);
+    browser.show(Vec::new());
+    browser.press(Key::Back);
+    assert_eq!(browser.picked().len(), 1);
+    assert!(browser.picked()[0].path().ends_with("notes"));
+}
+
+#[test]
+fn an_20_d_picks_the_marks_or_else_the_selection() {
+    let (dir, mut browser) = on_disk();
+    assert_eq!(browser.press(Key::Trash), Effect::Trash);
+    let picked = browser.picked();
+    assert_eq!(picked.len(), 1);
+    assert_eq!(picked[0].path(), dir.path().join("big"));
+
+    mark_selected(&mut browser);
+    mark_selected(&mut browser);
+    let paths: Vec<_> = browser
+        .picked()
+        .iter()
+        .map(|c| c.path().to_owned())
+        .collect();
+    assert_eq!(paths, [dir.path().join("big"), dir.path().join("notes")]);
+    browser.clear_marks();
+    assert_eq!(browser.picked().len(), 1);
+}
+
+#[test]
+fn an_22_the_folder_to_measure_again_holds_every_trashed_path() {
+    let browser = browser();
+    let root = PathBuf::from("/r");
+    assert_eq!(
+        browser.common_trail(&[root.join("big/inner/a"), root.join("big/inner/b")]),
+        ["big", "inner"]
+    );
+    assert_eq!(
+        browser.common_trail(&[root.join("big/inner/a"), root.join("small/x")]),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        browser.common_trail(&[root.join("notes")]),
+        Vec::<String>::new()
+    );
+}

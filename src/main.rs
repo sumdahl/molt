@@ -178,7 +178,7 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         Some(Command::Installer(args)) => run_installer(cli, args, &startup),
         Some(Command::System(args)) => run_system(cli, args, &startup),
         // AN-09: read-only, so a dry run is the same run.
-        Some(Command::Analyze(args)) => run_analyze(cli, args),
+        Some(Command::Analyze(args)) => run_analyze(cli, args, &startup),
     }
 }
 
@@ -348,7 +348,11 @@ fn ask_and_act(
 }
 
 /// AN-01..AN-09
-fn run_analyze(cli: &Cli, args: &AnalyzeArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
+fn run_analyze(
+    cli: &Cli,
+    args: &AnalyzeArgs,
+    startup: &Startup,
+) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let path = match &args.path {
         Some(path) => path.clone(),
         None => std::env::current_dir()?,
@@ -356,7 +360,21 @@ fn run_analyze(cli: &Cli, args: &AnalyzeArgs) -> Result<ExitCode, Box<dyn std::e
     // AN-10
     let terminal = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
     if terminal && !cli.json && !args.list {
-        analyze::browse(&path)?;
+        // P-05: in a dry run the trash step only previews.
+        let dry_run = match startup.decision {
+            Decision::DryRun(_) => Some(format!(
+                "Dry run, so nothing moved{}.",
+                startup::dry_run_notice(startup.decision)
+                    .map(|notice| format!(" ({notice})"))
+                    .unwrap_or_default()
+            )),
+            Decision::Live => None,
+        };
+        analyze::browse(
+            &path,
+            &startup.env.context(&startup.config),
+            dry_run.as_deref(),
+        )?;
         return Ok(ExitCode::SUCCESS);
     }
     let depth = usize::try_from(args.depth)?;
