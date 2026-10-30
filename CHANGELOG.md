@@ -7,7 +7,7 @@ The release workflow publishes the section matching the pushed tag as the GitHub
 ## [Unreleased]
 
 ### Added
-- `molt analyze [PATH]`: where the space in a folder goes, largest first, with `--depth`, `--all` and `--json`. On-disk sizes, hard links counted once, never follows symlinks or crosses filesystems, `+` on sizes that are lower bounds (exit 3). Walks folders in parallel on the standard library's threads. Spec: `specs/012-analyze.md`.
+- `molt analyze [PATH]`: where the space in a folder goes, largest first, with `--depth`, `--all` and `--json`. On-disk sizes, hard links counted once, never follows symlinks or crosses filesystems, `+` on sizes that are lower bounds (exit 3). Walks folders in parallel on the standard library's threads. On a terminal it opens a full-screen browser with Vim keys and arrows, written in molt with no terminal library; `--list` prints the listing instead. The browser changes nothing, and always restores the terminal. Spec: `specs/012-analyze.md`.
 
 ### Changed
 - Releases are signed: the release workflow builds only from a tag signed with a maintainer's SSH key, listed in `.github/allowed_signers`. Check a tag with `git -c gpg.ssh.allowedSignersFile=.github/allowed_signers verify-tag vX.Y.Z`.

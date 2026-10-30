@@ -50,7 +50,8 @@ enum Command {
     /// Move old installers (.deb, .rpm, .AppImage, .iso…) in Downloads and Desktop to the
     /// trash: preview first, then ask.
     Installer(InstallerArgs),
-    /// Show what takes the space in a folder, largest first. Changes nothing.
+    /// Show what takes the space in a folder, largest first: a browser on a terminal, a
+    /// listing otherwise. Changes nothing.
     Analyze(AnalyzeArgs),
     /// Free system space (pacman cache, journal, coredumps) through each tool's own
     /// command, run with sudo: preview first, then ask.
@@ -93,6 +94,9 @@ struct AnalyzeArgs {
     /// List every entry, not just the 20 largest per level.
     #[arg(long)]
     all: bool,
+    /// Print the listing even on a terminal, instead of opening the browser.
+    #[arg(long)]
+    list: bool,
 }
 
 #[derive(Clone, Args)]
@@ -349,6 +353,12 @@ fn run_analyze(cli: &Cli, args: &AnalyzeArgs) -> Result<ExitCode, Box<dyn std::e
         Some(path) => path.clone(),
         None => std::env::current_dir()?,
     };
+    // AN-10
+    let terminal = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    if terminal && !cli.json && !args.list {
+        analyze::browse(&path)?;
+        return Ok(ExitCode::SUCCESS);
+    }
     let depth = usize::try_from(args.depth)?;
     let tree = analyze::measure(&path, depth)?;
     if cli.json {
