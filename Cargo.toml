@@ -1,0 +1,16 @@
+[package]
+name = "molt"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Reclaim disk space on Linux, safely"
+repository = "https://github.com/sumdahl/molt"
+publish = false
+
+[dependencies]
+clap = { version = "4.6.7", features = ["derive"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

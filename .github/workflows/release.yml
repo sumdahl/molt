@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TARGET: x86_64-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Tag must match Cargo.toml version
+        run: |
+          want="v$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')"
+          [ "$GITHUB_REF_NAME" = "$want" ] || { echo "tag $GITHUB_REF_NAME != $want"; exit 1; }
+
+      - name: CHANGELOG must have a section for this version
+        run: |
+          awk -v v="${GITHUB_REF_NAME#v}" '$0 ~ "^## \\[" v "\\]" {f=1; next} /^## \[/ {f=0} f' CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "no CHANGELOG entry for $GITHUB_REF_NAME"; exit 1; }
+
+      - run: rustup toolchain install stable --profile minimal -c rustfmt,clippy -t "$TARGET"
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+      - run: cargo build --release --locked --target "$TARGET"
+
+      - name: Smoke test release binary
+        run: |
+          bin="target/$TARGET/release/molt"
+          [ "$("$bin" --version)" = "molt ${GITHUB_REF_NAME#v}" ]
+          "$bin" --help > /dev/null
+
+      # ponytail: x86_64 only; add an aarch64 matrix entry (ubuntu-24.04-arm) when there are arm users
+      - name: Package
+        run: |
+          name="molt-$GITHUB_REF_NAME-$TARGET"
+          mkdir "$name"
+          cp "target/$TARGET/release/molt" README.md CHANGELOG.md "$name/"
+          tar czf "$name.tar.gz" "$name"
+          sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "molt $GITHUB_REF_NAME" --notes-file notes.md molt-*.tar.gz molt-*.sha256

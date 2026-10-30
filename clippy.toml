@@ -1,0 +1,8 @@
+# Spec P-01: all deletion goes through the safe-delete module (specs/001-safe-delete.md).
+# That module is the only place allowed to `#[allow(clippy::disallowed_methods)]`.
+disallowed-methods = [
+    { path = "std::fs::remove_file", reason = "use the safe-delete module (P-01)" },
+    { path = "std::fs::remove_dir", reason = "use the safe-delete module (P-01)" },
+    { path = "std::fs::remove_dir_all", reason = "use the safe-delete module (P-01)" },
+    { path = "std::fs::rename", reason = "use the safe-delete module (P-01)" },
+]
