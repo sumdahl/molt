@@ -6,6 +6,8 @@ The release workflow publishes the section matching the pushed tag as the GitHub
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-30
+
 ### Added
 - `molt analyze [PATH]`: where the space in a folder goes, largest first, with `--depth`, `--all` and `--json`. On-disk sizes, hard links counted once, never follows symlinks or crosses filesystems, `+` on sizes that are lower bounds (exit 3). Walks folders in parallel on the standard library's threads. On a terminal it opens a full-screen browser with Vim keys and arrows, written in molt with no terminal library; `--list` prints the listing instead. In the browser, `Space` marks items and `d` moves them to the trash, after the full safe-delete preview and a yes; there is no permanent delete. A dry run shows the preview only. The browser always restores the terminal. Spec: `specs/012-analyze.md`.
 
