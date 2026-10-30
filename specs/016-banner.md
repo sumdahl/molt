@@ -1,6 +1,6 @@
 # 016: The molt banner
 
-Status: Draft (#52)
+Status: Accepted (#52)
 Prefix: BN
 
 ## Goal
