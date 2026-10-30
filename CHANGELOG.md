@@ -10,6 +10,8 @@ The release workflow publishes the section matching the pushed tag as the GitHub
 - `onyx system`'s preview shows each task's size `now` and what it `would free`, worked out before anything runs: paccache's own `disk space saved`, about the journal's size over 500 MiB, and `not known` for coredumps the system's age rule decides. A total follows. The tools' preview output is shown once, in full (up to 10 lines each), inside the preview, instead of echoed first and cut to its last line. `--json` has `would_free` and `estimate` per task.
 
 ### Fixed
+- `onyx clean` runs each cleanup tool from your home folder, not the folder onyx was started in, so a project's config (a `.npmrc` setting `cache=`, say) can't point a tool somewhere other than what the preview measured.
+- The Bun cache is removed by onyx itself: Bun 1.4's `bun pm cache rm` fails outside a project folder.
 - `onyx --help` again says "Reclaim disk space on Linux, safely" instead of the crates.io description, and `uninstall`'s help says it also removes the app's package through its own manager.
 
 ## [0.3.0] - 2026-10-31

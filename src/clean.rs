@@ -206,9 +206,9 @@ fn rule_result<'a>(
     &mut results[index]
 }
 
-/// CN-08: runs the rule's own cleanup command without a shell, with stdin closed and its
-/// output on stderr (stdout stays onyx's, for `--json`). Freed is the size before minus
-/// after.
+/// CN-08: runs the rule's own cleanup command without a shell, in `$HOME`, with stdin
+/// closed and its output on stderr (stdout stays onyx's, for `--json`). Freed is the size
+/// before minus after.
 fn run_tool(
     rule: &Rule,
     before: u64,
@@ -220,6 +220,9 @@ fn run_tool(
         None => None,
         Some(program) => Command::new(program)
             .args(&rule.clean_with[1..])
+            // CN-08: a project's config in the starting folder (`.npmrc`'s `cache=`) could
+            // point the tool somewhere other than what the preview measured.
+            .current_dir(&startup.env.dirs.home)
             .env(
                 "PATH",
                 std::env::join_paths(search_path).unwrap_or_default(),

@@ -39,7 +39,6 @@ name = "Bun install cache"
 category = "dev-tools"
 kind = "regenerable"
 paths = ["~/.bun/install/cache"]
-clean_with = ["bun", "pm", "cache", "rm"]
 processes = ["bun"]
 requires = ["bun"]
 

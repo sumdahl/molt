@@ -36,7 +36,7 @@ Prefix: CN
 - **CN-07** `--dry-run` (or a dry run from the config or `ONYX_DRY_RUN`, with the CL-06 notice) prints the preview and stops, changing nothing.
 
 ### Acting
-- **CN-08** A rule with `clean_with` runs that command, with no shell, `$PATH` limited to its absolute entries (SC-10), stdin closed, and its output shown. onyx never also deletes that rule's files. If the command fails (non-zero exit, or it can't start), the rule is reported as failed and its files are left alone (P-02). Its freed size is measured as the rule's size before minus after.
+- **CN-08** A rule with `clean_with` runs that command, with no shell, `$PATH` limited to its absolute entries (SC-10), stdin closed, `$HOME` as its working folder (#84), and its output shown. onyx never also deletes that rule's files. If the command fails (non-zero exit, or it can't start), the rule is reported as failed and its files are left alone (P-02). Its freed size is measured as the rule's size before minus after.
 - **CN-09** Owning-tool commands run first. Every other rule's candidates go through one live safe-delete plan per mode, with the identity recorded by the preview's scan, so anything that changed since the preview is skipped (SD-08, SD-10).
 - **CN-10** `--permanent` and `--trash` override the mode of every rule in the run (000 Decisions). They conflict with each other (exit 2).
 
@@ -56,4 +56,5 @@ Prefix: CN
 
 - **Flags plus one question** (CN-02, CN-05) until the phase 5 menu.
 - **A failing owning tool is reported, never worked around** (CN-08, P-02).
+- **Cleanup tools run in `$HOME`** (maintainer, 2026-10-31, #84), never in the folder onyx was started from. Tools read config from their working folder (a project's `.npmrc` can set `cache=`), so a project could otherwise make a tool clean something other than what the preview measured.
 - **No terminal and no `--yes`: preview, change nothing, exit 1** (CN-05).
