@@ -59,4 +59,5 @@ What this spec deliberately leaves out.
 | 008 | [`molt purge`](008-purge.md) | PG | Implemented |
 | 009 | [`molt installer`](009-installer.md) | IN | Implemented |
 | 010 | [Built-in rules](010-built-in-rules.md) | BR | Implemented |
+| 012 | [`molt analyze`](012-analyze.md) | AN | Draft |
 | 011 | [Locked folders](011-locked-folders.md) | LF | Implemented |
