@@ -26,11 +26,14 @@ pub enum TaskId {
     Fstrim,
     FontCache,
     DnsCache,
+    /// OP-15 to OP-20: read-only checks, last.
+    FailedUnits,
+    Smart,
 }
 
 impl TaskId {
     /// OP-08, OP-14: the order they run in.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 9] = [
         Self::PacmanOrphans,
         Self::AptAutoremove,
         Self::DnfAutoremove,
@@ -38,6 +41,8 @@ impl TaskId {
         Self::Fstrim,
         Self::FontCache,
         Self::DnsCache,
+        Self::FailedUnits,
+        Self::Smart,
     ];
 
     fn name(self) -> &'static str {
@@ -49,12 +54,14 @@ impl TaskId {
             Self::Fstrim => "TRIM: tell each SSD which blocks no file uses",
             Self::FontCache => "Font cache: rebuild your out-of-date caches",
             Self::DnsCache => "DNS cache: forget remembered answers",
+            Self::FailedUnits => "Failed systemd units",
+            Self::Smart => "Disk health (SMART)",
         }
     }
 
-    /// OP-11: your own font cache needs no root.
+    /// OP-11, OP-15: your own font cache, and the checks, need no root.
     fn needs_sudo(self) -> bool {
-        self != Self::FontCache
+        !matches!(self, Self::FontCache | Self::FailedUnits | Self::Smart)
     }
 
     fn tool(self) -> &'static str {
@@ -66,6 +73,8 @@ impl TaskId {
             Self::Fstrim => "fstrim",
             Self::FontCache => "fc-cache",
             Self::DnsCache => "resolvectl",
+            Self::FailedUnits => "systemctl",
+            Self::Smart => "smartctl",
         }
     }
 
@@ -78,7 +87,8 @@ impl TaskId {
             Self::DnfAutoremove => &["repoquery", "--unneeded", "--qf", "%{name} "],
             Self::ZypperUnneeded => &["--quiet", "packages", "--unneeded"],
             // 015 Decisions: `fstrim --dry-run` sees no filesystems without root.
-            Self::Fstrim | Self::FontCache => return None,
+            // The checks run several queries of their own (`check`).
+            Self::Fstrim | Self::FontCache | Self::FailedUnits | Self::Smart => return None,
             // OP-12: it also tells whether systemd-resolved is running.
             Self::DnsCache => &["statistics"],
         })
@@ -100,7 +110,9 @@ impl TaskId {
                 .map(str::trim)
                 .filter(|name| *name != "Name")
                 .collect(),
-            Self::Fstrim | Self::FontCache | Self::DnsCache => Vec::new(),
+            Self::Fstrim | Self::FontCache | Self::DnsCache | Self::FailedUnits | Self::Smart => {
+                Vec::new()
+            }
         };
         let mut unique: Vec<String> = Vec::new();
         for name in names {
@@ -124,6 +136,8 @@ impl TaskId {
             Self::Fstrim => &["--all", "--verbose"],
             Self::FontCache => &[],
             Self::DnsCache => &["flush-caches"],
+            // OP-15: checks have no live command; `preview` never asks for one.
+            Self::FailedUnits | Self::Smart => &[],
         };
         invocation(tool, args, packages)
     }
@@ -139,6 +153,8 @@ impl fmt::Display for TaskId {
             Self::Fstrim => "fstrim",
             Self::FontCache => "font-cache",
             Self::DnsCache => "dns-cache",
+            Self::FailedUnits => "failed-units",
+            Self::Smart => "smart",
         })
     }
 }
@@ -212,6 +228,8 @@ pub enum Found {
     Unsafe(String),
     /// OP-10: a maintenance task that will run, with its preview's line if it has one.
     Ready(Option<String>),
+    /// OP-20: what a check found, line by line.
+    Report(Vec<String>),
 }
 
 /// OP-04, OP-05, OP-12: reads a finished query.
@@ -283,9 +301,12 @@ pub fn preview(tasks: &Tasks, selected: &[Task], search_path: &[PathBuf]) -> Pre
                 .id
                 .query()
                 .map(|args| invocation(&task.tool, args, &[]));
-            let found = match &query {
-                Some(query) => run_query(task.id, query, search_path),
-                None => Found::Ready(None),
+            let found = match (&query, task.id) {
+                (_, TaskId::FailedUnits | TaskId::Smart) => {
+                    Found::Report(check(task, search_path, Path::new("/sys/block")))
+                }
+                (Some(query), _) => run_query(task.id, query, search_path),
+                (None, _) => Found::Ready(None),
             };
             let live = match &found {
                 Found::Packages(packages) => Some(task.id.live(&task.tool, packages)),
@@ -327,6 +348,115 @@ fn run_query(id: TaskId, query: &Invocation, search_path: &[PathBuf]) -> Found {
         ),
         Err(_) => Found::Failed(None),
     }
+}
+
+/// OP-15: runs a check's read-only queries: no sudo, no shell, stdin closed.
+fn check(task: &Task, search_path: &[PathBuf], sys_block: &Path) -> Vec<String> {
+    let ask = |args: &[&str]| {
+        invocation(&task.tool, args, &[])
+            .command(search_path)
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .ok()
+            .map(|out| {
+                (
+                    out.status.code(),
+                    String::from_utf8_lossy(&out.stdout).into_owned(),
+                )
+            })
+    };
+    match task.id {
+        TaskId::FailedUnits => failed_unit_lines(
+            ask(&["--failed", "--plain", "--no-legend"]),
+            ask(&["--user", "--failed", "--plain", "--no-legend"]),
+        ),
+        _ => disks(sys_block)
+            .iter()
+            .map(|disk| {
+                let device = format!("/dev/{disk}");
+                // OP-17: `-H` and the device, nothing else.
+                match ask(&["-H", &device]) {
+                    Some((exit, stdout)) => smart_health(disk, exit, &stdout),
+                    None => format!("{disk}: smartctl didn't run"),
+                }
+            })
+            .collect(),
+    }
+}
+
+const SYSTEMCTL_FAILED: &str = "systemctl --failed --plain --no-legend";
+
+/// OP-16: each failed unit, the user's marked, then where to look closer.
+fn failed_unit_lines(
+    system: Option<(Option<i32>, String)>,
+    user: Option<(Option<i32>, String)>,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut units = 0;
+    for (answer, scope, mark) in [(system, "", ""), (user, " --user", " (user)")] {
+        match answer {
+            Some((Some(0), stdout)) => {
+                for unit in stdout
+                    .lines()
+                    .filter_map(|line| line.split_whitespace().next())
+                {
+                    lines.push(format!("{unit}{mark}"));
+                    units += 1;
+                }
+            }
+            Some((exit, _)) => {
+                let exit = exit.map_or("didn't run".to_owned(), |code| format!("exit {code}"));
+                lines.push(format!("`{SYSTEMCTL_FAILED}{scope}` failed ({exit})"));
+            }
+            None => lines.push(format!("`{SYSTEMCTL_FAILED}{scope}` didn't run")),
+        }
+    }
+    if units > 0 {
+        lines.push(
+            "look closer: systemctl status <unit>, journalctl -b -u <unit> (--user for yours)"
+                .to_owned(),
+        );
+    } else if lines.is_empty() {
+        lines.push("no failed units".to_owned());
+    }
+    lines
+}
+
+/// OP-17: whole disks in `sys_block`, without virtual ones, with plain names, sorted.
+fn disks(sys_block: &Path) -> Vec<String> {
+    const VIRTUAL: [&str; 8] = ["loop", "ram", "zram", "dm-", "md", "sr", "fd", "nbd"];
+    let Ok(entries) = std::fs::read_dir(sys_block) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter(|name| !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric()))
+        .filter(|name| !VIRTUAL.iter().any(|prefix| name.starts_with(prefix)))
+        .collect();
+    names.sort();
+    names
+}
+
+/// OP-18: one disk's line from smartctl's verdict and exit status bits.
+fn smart_health(disk: &str, exit: Option<i32>, stdout: &str) -> String {
+    let verdict = stdout
+        .lines()
+        .find(|line| line.contains("test result:") || line.contains("Health Status:"))
+        .and_then(|line| line.split_once(':'))
+        .map(|(_, value)| value.trim());
+    let bits = exit.unwrap_or(0);
+    let health = if verdict.is_some_and(|v| v.starts_with("FAILED")) || bits & 8 != 0 {
+        "FAILING".to_owned()
+    } else if verdict.is_some_and(|v| v.starts_with("PASSED") || v.starts_with("OK")) {
+        "passed".to_owned()
+    } else if bits & 2 != 0 {
+        format!("needs root: run `sudo smartctl -H /dev/{disk}`")
+    } else {
+        "no SMART data".to_owned()
+    };
+    format!("{disk}: {health}")
 }
 
 #[derive(Debug, Serialize)]
@@ -386,6 +516,11 @@ impl fmt::Display for Preview {
                 }
                 Found::Unsafe(name) => {
                     writeln!(f, "    left out: {name:?} isn't one plain package name")?;
+                }
+                Found::Report(lines) => {
+                    for line in lines {
+                        writeln!(f, "    {line}")?;
+                    }
                 }
                 Found::Ready(line) => {
                     if let Some(line) = line {

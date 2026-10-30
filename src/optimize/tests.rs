@@ -84,7 +84,15 @@ fn op_10_op_11_op_13_maintenance_commands_are_exact_and_font_cache_needs_no_sudo
         );
     }
     assert!(!TaskId::FontCache.needs_sudo());
-    assert!(TaskId::ALL.iter().filter(|id| !id.needs_sudo()).count() == 1);
+    // OP-15: the checks need none either.
+    let without: Vec<TaskId> = TaskId::ALL
+        .into_iter()
+        .filter(|id| !id.needs_sudo())
+        .collect();
+    assert_eq!(
+        without,
+        [TaskId::FontCache, TaskId::FailedUnits, TaskId::Smart]
+    );
 }
 
 #[test]
@@ -95,4 +103,61 @@ fn op_12_the_dns_preview_is_the_cache_size_line_and_a_failure_leaves_it_out() {
         Found::Ready(Some("Current Cache Size: 43".to_owned()))
     );
     assert_eq!(found(TaskId::DnsCache, Some(1), ""), Found::Failed(Some(1)));
+}
+
+#[test]
+fn op_17_only_real_whole_disks_with_plain_names_are_checked() {
+    let sys_block = tempfile::tempdir().unwrap();
+    for name in [
+        "sda", "nvme0n1", "loop0", "ram1", "zram0", "dm-0", "md127", "sr0", "fd0", "nbd3", "x y",
+    ] {
+        std::fs::create_dir(sys_block.path().join(name)).unwrap();
+    }
+    assert_eq!(disks(sys_block.path()), ["nvme0n1", "sda"]);
+    assert!(disks(&sys_block.path().join("missing")).is_empty());
+}
+
+#[test]
+fn op_18_each_smart_outcome_has_its_line() {
+    let ata = "SMART overall-health self-assessment test result: PASSED\n";
+    assert_eq!(smart_health("sda", Some(0), ata), "sda: passed");
+    let scsi = "SMART Health Status: OK\n";
+    assert_eq!(smart_health("sdb", Some(0), scsi), "sdb: passed");
+    let failed = "SMART overall-health self-assessment test result: FAILED!\n";
+    assert_eq!(smart_health("sda", Some(8), failed), "sda: FAILING");
+    assert_eq!(smart_health("sda", Some(8), ""), "sda: FAILING");
+    assert_eq!(
+        smart_health("nvme0n1", Some(2), "Permission denied"),
+        "nvme0n1: needs root: run `sudo smartctl -H /dev/nvme0n1`"
+    );
+    assert_eq!(
+        smart_health("sdc", Some(4), "no data"),
+        "sdc: no SMART data"
+    );
+}
+
+#[test]
+fn op_16_failed_units_are_named_with_where_to_look() {
+    let system = Some((
+        Some(0),
+        "bad.service loaded failed failed Bad thing\n".to_owned(),
+    ));
+    let user = Some((Some(0), "mine.timer loaded failed failed Mine\n".to_owned()));
+    let lines = failed_unit_lines(system, user);
+    assert_eq!(lines[0], "bad.service");
+    assert_eq!(lines[1], "mine.timer (user)");
+    assert!(lines[2].contains("systemctl status <unit>"), "{lines:?}");
+    assert!(lines[2].contains("journalctl -b -u <unit>"), "{lines:?}");
+
+    let none = failed_unit_lines(
+        Some((Some(0), String::new())),
+        Some((Some(0), String::new())),
+    );
+    assert_eq!(none, ["no failed units"]);
+
+    let broken = failed_unit_lines(
+        Some((Some(1), String::new())),
+        Some((Some(0), String::new())),
+    );
+    assert!(broken[0].contains("failed (exit 1)"), "{broken:?}");
 }
