@@ -32,6 +32,7 @@ These are rules, not suggestions. Code that breaks them doesn't merge.
 ## Tests
 
 - **Never touch the real home directory.** Every test that touches the filesystem uses a temporary directory as `$HOME` with `XDG_*` pointed inside it.
+- In test builds, `safe_delete::execute` panics if a live plan names anything outside the system temp directory. Don't weaken or bypass this tripwire.
 - Use real filesystem operations; don't mock the filesystem.
 - `tests/smoke.rs` must always pass: the binary starts, `--version` matches `Cargo.toml`, and bad flags exit with code 2.
 - Agents must never run molt against the real system except with `--dry-run`.

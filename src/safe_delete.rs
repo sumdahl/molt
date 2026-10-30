@@ -166,6 +166,8 @@ impl std::error::Error for PlanRefused {}
 /// Carries out `plan`, one candidate at a time. A failure on one candidate never stops
 /// the others (SD-14).
 pub fn execute(plan: &Plan, ctx: &Context) -> Result<Report, PlanRefused> {
+    #[cfg(test)]
+    tests::assert_sandboxed(plan);
     if ctx.euid.is_root() && plan.privilege != Privilege::System {
         return Err(PlanRefused::Root);
     }

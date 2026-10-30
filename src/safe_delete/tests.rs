@@ -27,6 +27,26 @@ thread_local! {
     static BEFORE_DESCEND: RefCell<Option<Hook>> = const { RefCell::new(None) };
 }
 
+/// Tripwire for every plan run in a test build: a live plan may only touch paths inside
+/// the system temp directory. A buggy test then panics instead of deleting real files.
+pub(super) fn assert_sandboxed(plan: &Plan) {
+    if plan.execution == Execution::DryRun {
+        return;
+    }
+    let temp = fs::canonicalize(std::env::temp_dir()).unwrap();
+    for candidate in &plan.candidates {
+        let parent = candidate
+            .path()
+            .parent()
+            .and_then(|p| fs::canonicalize(p).ok());
+        assert!(
+            parent.is_some_and(|p| p.starts_with(&temp) && p != temp),
+            "test tried a live plan outside the temp dir: {:?}",
+            candidate.path()
+        );
+    }
+}
+
 /// Called by the removal walk before it opens each subdirectory (SD-09 race tests).
 pub(super) fn before_descend(name: &CStr) {
     BEFORE_DESCEND.with_borrow_mut(|hook| {
@@ -137,6 +157,16 @@ fn mv(from: &Path, to: &Path) {
 
 fn removed() -> impl Fn(&Outcome) -> bool {
     |o| matches!(o, Outcome::Removed { partial: false, .. })
+}
+
+// Test safety
+
+#[test]
+#[should_panic(expected = "outside the temp dir")]
+fn tests_cannot_run_a_live_plan_outside_the_temp_dir() {
+    let sb = Sandbox::new();
+    // procfs entries can't be unlinked, so even a broken tripwire removes nothing.
+    sb.run(&[Path::new("/proc/self/status")], Execution::Live);
 }
 
 // Refusals
