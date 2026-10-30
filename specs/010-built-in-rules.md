@@ -33,7 +33,7 @@ All but the installers are `regenerable`, so they're deleted permanently (000 De
 | `npm-cache` | `~/.npm/_cacache` | `npm cache clean --force` | `npm` |
 | `pnpm-store` | `$D/pnpm/store` | `pnpm store prune` | `pnpm` |
 | `yarn-cache` | `$C/yarn` | `yarn cache clean` | `yarn` |
-| `bun-cache` | `~/.bun/install/cache` | `bun pm cache rm` | `bun` |
+| `bun-cache` | `~/.bun/install/cache` | none (`bun pm` needs a project folder since Bun 1.4, #84) | `bun` |
 | `cargo-registry` | `~/.cargo/registry/cache`, `~/.cargo/registry/src` | none (stable cargo has no gc) | `cargo` |
 | `cargo-git` | `~/.cargo/git/checkouts` | none | `cargo` |
 | `go-build-cache` | `$C/go-build` | `go clean -cache` | `go` |
@@ -82,6 +82,8 @@ The six `installer-*` rules are reviewed in [009](009-installer.md). They're `us
 - A test that every rule with `clean_with` also has `requires` naming its first word (BR-04).
 
 ## Decisions
+
+- **Bun's cache is removed by onyx, not `bun pm cache rm`** (maintainer, 2026-10-31, #84). Bun 1.4's `bun pm` refuses to run outside a folder with a `package.json`, even to print the cache path, so the owning tool can't be used from `$HOME`. The cache is plain downloaded packages, which Bun fetches again.
 
 - **No trash rule.** Emptying the trash deletes what the user only set aside; it will be a separate, explicit action later.
 - **`java` blocks Gradle, Maven and JetBrains.** Skipping too often is safe; deleting under a running build or IDE is not.

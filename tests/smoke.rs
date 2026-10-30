@@ -3172,3 +3172,38 @@ fn sy_04_preview_output_is_shown_once_inside_the_preview() {
     assert!(text.contains("would free 2.0 MiB"), "{text}");
     assert!(text.contains("Would free 2.0 MiB in total."), "{text}");
 }
+
+#[test]
+fn cn_08_cleanup_tools_run_in_home_not_where_onyx_was_started() {
+    if is_root() {
+        return eprintln!("skipped: onyx refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.rules(TOOL_RULE);
+    home.file("tooled/x", 4096);
+    let bin = home.path.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let wrote = home.path.join("pwd");
+    fs::write(
+        bin.join("fake-clean"),
+        format!("#!/bin/sh\n/bin/pwd > \"{}\"\n", wrote.display()),
+    )
+    .unwrap();
+    fs::set_permissions(bin.join("fake-clean"), fs::Permissions::from_mode(0o755)).unwrap();
+    // Started from elsewhere, as from inside a project.
+    let elsewhere = TempDir::new().unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_onyx"))
+        .args(["clean", "--yes"])
+        .current_dir(elsewhere.path())
+        .env_clear()
+        .env("HOME", &home.path)
+        .env("PATH", &bin)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", stderr(&out));
+    let pwd = fs::read_to_string(&wrote).unwrap();
+    assert_eq!(
+        Path::new(pwd.trim()).canonicalize().unwrap(),
+        home.path.canonicalize().unwrap()
+    );
+}

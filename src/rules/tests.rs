@@ -558,7 +558,6 @@ fn br_03_cleanup_commands_are_exactly_the_reviewed_ones() {
         ("npm-cache", "npm cache clean --force"),
         ("pnpm-store", "pnpm store prune"),
         ("yarn-cache", "yarn cache clean"),
-        ("bun-cache", "bun pm cache rm"),
         ("go-build-cache", "go clean -cache"),
         ("go-module-cache", "go clean -modcache"),
         ("uv-cache", "uv cache clean"),
