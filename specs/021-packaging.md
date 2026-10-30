@@ -22,7 +22,7 @@ onyx can be installed by the package manager people already use: `onyx-bin` from
 
 ### AUR: `onyx-bin` (#62)
 - **PK-03** `packaging/aur/PKGBUILD` builds `onyx-bin` from the release tarball on GitHub: no `provides=(onyx)` (the AUR's `onyx` is an unrelated reverse proxy), `arch=(x86_64)`, `license=(MIT)`, the release's tarball as its only source, and its sha256. It never builds from source and never downloads during `package()`.
-- **PK-04** The release workflow fills the PKGBUILD's `pkgver` and `sha256sums` from the tarball it just built, builds it with `makepkg` in an `archlinux` container (as a normal user, with the tarball already in place, so nothing is downloaded), installs the result with `pacman -U`, and checks that `onyx --version` and the three completion files are there. It then attaches the filled `PKGBUILD` and `.SRCINFO` to the GitHub Release, ready for the maintainer to push to the AUR.
+- **PK-04** The release workflow fills the PKGBUILD's `pkgver` and `sha256sums` from the tarball it just built, builds it with `makepkg` in an `archlinux` container (as a normal user, with the tarball already in place, so nothing is downloaded), installs the result with `pacman -U`, and checks that `onyx --version` and the three completion files are there. It also checks that the installed onyx refuses `onyx update`, naming pacman (PK-02). It then attaches the filled `PKGBUILD` and `.SRCINFO` to the GitHub Release as `onyx-bin.PKGBUILD` and `onyx-bin.SRCINFO` (GitHub renames assets that start with a dot), ready for the maintainer to push to the AUR as `PKGBUILD` and `.SRCINFO`.
 
 ### `.deb` (#63)
 - **PK-05** The release workflow builds `onyx_X.Y.Z_amd64.deb` with `dpkg-deb --root-owner-group` from the musl binary: `/usr/bin/onyx`, `/usr/share/doc/onyx/copyright` (the licence) and `README.md`, and the completions. Its `control` names the package `onyx`, `Architecture: amd64`, no `Depends` (the binary is static), and the maintainer and homepage.
@@ -36,7 +36,7 @@ onyx can be installed by the package manager people already use: `onyx-bin` from
 
 - PK-01, PK-04, PK-06: the release workflow's container steps install each package and check the files and `onyx --version`; a dry run of those steps runs in CI on every PR against a locally built musl tarball, so they're tested before a tag needs them.
 - PK-02: smoke tests run a copy of onyx from `$CARGO_HOME/bin` in the temp home (refused, naming `cargo install onyx-cli`), and unit tests map `/usr/bin/onyx` with a fake `pacman -Qo` or `dpkg -S` to the right message.
-- PK-03: `bash -n` and a test that sources the PKGBUILD in bash and checks its fields; `namcap` where installed.
+- PK-03: `makepkg` itself parses and builds the PKGBUILD in the container, and `--printsrcinfo` writes its fields; a broken field fails the CI job.
 - PK-07, PK-08: `cargo publish --dry-run --locked` in CI.
 
 ## Decisions
