@@ -6,6 +6,8 @@ The release workflow publishes the section matching the pushed tag as the GitHub
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-30
+
 ### Changed
 - molt is now **onyx**: the command, the repository (`sumdahl/onyx`), and its folders (`~/.config/onyx`, `$XDG_CACHE_HOME/onyx`, `$XDG_STATE_HOME/onyx`) and environment variables (`ONYX_*`). The crate will be published as `onyx-cli`, because `onyx` is taken on crates.io. molt 0.1.0 had no update path, so move `~/.config/molt` to `~/.config/onyx` by hand if you made one.
 
