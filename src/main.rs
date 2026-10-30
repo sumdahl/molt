@@ -53,6 +53,8 @@ enum Command {
     /// Show what takes the space in a folder, largest first: a browser on a terminal, a
     /// listing otherwise. Changes nothing.
     Analyze(AnalyzeArgs),
+    /// Show the machine's health: CPU, memory, disks and stuck processes. Changes nothing.
+    Status,
     /// Free system space (pacman cache, journal, coredumps) through each tool's own
     /// command, run with sudo: preview first, then ask.
     System(SystemArgs),
@@ -179,6 +181,16 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         Some(Command::System(args)) => run_system(cli, args, &startup),
         // AN-09: read-only, so a dry run is the same run.
         Some(Command::Analyze(args)) => run_analyze(cli, args, &startup),
+        // ST-01, ST-08: read-only, and always 0.
+        Some(Command::Status) => {
+            let status = molt::status::status();
+            if cli.json {
+                println!("{}", serde_json::to_string(&status)?);
+            } else {
+                print!("{status}");
+            }
+            Ok(ExitCode::SUCCESS)
+        }
     }
 }
 

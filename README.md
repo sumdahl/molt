@@ -4,7 +4,7 @@ Reclaim disk space on Linux, safely.
 
 molt finds what is filling your disk (caches, build artifacts, old packages, installers, leftovers from removed apps), shows you exactly what it would remove, and removes only what it can prove is safe to remove. It works on any Linux distribution. Distro-specific steps turn on only where their tools are installed; pacman is the first, with apt, dnf, zypper, Flatpak and Snap planned.
 
-> **Status: v0.1.0, early.** `molt scan`, `molt clean`, `molt purge`, `molt installer`, `molt system` and `molt analyze` work. Other commands are being built spec-first.
+> **Status: v0.1.0, early.** `molt scan`, `molt clean`, `molt purge`, `molt installer`, `molt system`, `molt analyze` and `molt status` work. Other commands are being built spec-first.
 
 ## Commands
 
@@ -62,6 +62,8 @@ molt analyze ~ --list --depth 2    # print two levels, 20 largest per level
 molt analyze --all --json          # everything, machine-readable
 ```
 
+`molt status` shows the machine's health in a fifth of a second, read from `/proc` and `/sys` without root: CPUs and how busy they are, load, uptime, memory and swap, each real disk (pointing at `molt analyze` when one is 90% full), and processes, naming any zombies. `--json` for scripts.
+
 `molt system` frees space outside your home through each tool's own command, run with `sudo`: the pacman cache (`paccache -rk2` and `-ruk0`), the systemd journal (`journalctl --vacuum-size=500M`) and coredumps past the system's own age limit (`systemd-tmpfiles --clean`). molt itself never runs as root. The preview uses each tool's read-only mode without `sudo`, so `molt system --dry-run` never asks for a password. A task is shown only when its tools are installed.
 
 ```sh
@@ -73,7 +75,7 @@ molt system --only journal         # just one task
 
 | Command | What it does |
 |---|---|
-| `molt status` | Live system health dashboard |
+| `molt status`, more | Temperatures, fans, battery, I/O rates, a health score, and a live view |
 | `molt uninstall` | Remove an app and its leftovers, across package managers |
 | `molt optimize` | Safe maintenance: orphan packages, TRIM, font cache, failed units |
 | `molt history` | Show what molt has removed |
