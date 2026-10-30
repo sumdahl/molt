@@ -8,7 +8,9 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::rules;
-use crate::safe_delete::{self, Candidate, Context, Mode, Outcome, Plan, Privilege, Reason, Uid};
+use crate::safe_delete::{
+    self, Candidate, Context, Mode, Outcome, Permissions, Plan, Privilege, Reason, Uid,
+};
 
 fn parse(text: &str) -> Result<Config, ConfigError> {
     let dir = TempDir::new().unwrap();
@@ -127,6 +129,7 @@ fn cf_05_whitelisted_paths_are_refused_by_safe_delete() {
         mode: Mode::Permanent,
         execution: Execution::DryRun,
         privilege: Privilege::User,
+        permissions: Permissions::Keep,
     };
 
     let report = safe_delete::execute(&plan, &ctx).unwrap();

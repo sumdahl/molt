@@ -21,6 +21,7 @@ type Hook = Box<dyn FnMut(&CStr)>;
 
 thread_local! {
     static BEFORE_DESCEND: RefCell<Option<Hook>> = const { RefCell::new(None) };
+    static BEFORE_UNLOCK: RefCell<Option<Hook>> = const { RefCell::new(None) };
 }
 
 /// Tripwire for every plan run in a test build: a live plan may only touch paths inside
@@ -41,6 +42,15 @@ pub(super) fn assert_sandboxed(plan: &Plan) {
             candidate.path()
         );
     }
+}
+
+/// Called before a locked folder's mode is changed (LF-03 race test).
+pub(super) fn before_unlock(name: &CStr) {
+    BEFORE_UNLOCK.with_borrow_mut(|hook| {
+        if let Some(hook) = hook {
+            hook(name);
+        }
+    });
 }
 
 /// Called by the removal walk before it opens each subdirectory (SD-09 race tests).
@@ -117,6 +127,7 @@ impl Sandbox {
             mode,
             execution,
             privilege,
+            permissions: Permissions::Keep,
         }
     }
 
@@ -777,4 +788,192 @@ proptest! {
         prop_assert!(!exists(&tree));
         prop_assert_eq!(snapshot(&sb.outside), before);
     }
+}
+
+// Locked folders (specs/011-locked-folders.md)
+
+/// A cache holding a makepkg-style `pkg` folder its owner can enter but not list.
+fn locked_cache(sb: &Sandbox) -> (PathBuf, PathBuf) {
+    sb.file("cache/yay/app/src/main.c");
+    sb.file("cache/yay/app/pkg/usr/bin/app");
+    let cache = sb.home.join("cache/yay");
+    let pkg = cache.join("app/pkg");
+    fs::set_permissions(&pkg, fs::Permissions::from_mode(0o111)).unwrap();
+    (cache, pkg)
+}
+
+fn mode(path: &Path) -> u32 {
+    fs::symlink_metadata(path).unwrap().mode() & 0o7777
+}
+
+fn is_root(sb: &Sandbox) -> bool {
+    if sb.ctx.euid.is_root() {
+        eprintln!("skipped: permissions are not enforced for root");
+    }
+    sb.ctx.euid.is_root()
+}
+
+/// Restores a locked folder so the temp dir can be cleaned up.
+fn unlock(pkg: &Path) {
+    if exists(pkg) {
+        fs::set_permissions(pkg, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+}
+
+#[test]
+fn lf_01_a_locked_folder_is_kept_listed_and_makes_the_outcome_partial() {
+    let sb = Sandbox::new();
+    if is_root(&sb) {
+        return;
+    }
+    let (cache, pkg) = locked_cache(&sb);
+
+    for execution in [Execution::DryRun, Execution::Live] {
+        let report = execute(&sb.plan(&[&cache], execution), &sb.ctx).unwrap();
+        assert_eq!(report.locked, std::slice::from_ref(&pkg), "{execution:?}");
+        assert!(
+            matches!(
+                report.results[0].1,
+                Outcome::WouldRemove { partial: true, .. } | Outcome::Removed { partial: true, .. }
+            ),
+            "{execution:?}: {:?}",
+            report.results
+        );
+        assert_eq!(report.exit_code(), 0);
+    }
+
+    assert!(!exists(&cache.join("app/src")), "the rest was removed");
+    assert_eq!(mode(&pkg), 0o111, "keep never changes a mode");
+    unlock(&pkg);
+    assert!(exists(&pkg.join("usr/bin/app")));
+}
+
+#[test]
+fn lf_01_in_trash_mode_locked_folders_move_with_the_candidate() {
+    let sb = Sandbox::new();
+    if is_root(&sb) {
+        return;
+    }
+    let (cache, pkg) = locked_cache(&sb);
+    let trashed_pkg = sb.home.join(".local/share/Trash/files/yay/app/pkg");
+
+    let report = execute(
+        &sb.plan_with(&[&cache], Mode::Trash, Execution::Live),
+        &sb.ctx,
+    )
+    .unwrap();
+
+    assert!(
+        matches!(report.results[0].1, Outcome::Trashed { .. }),
+        "{:?}",
+        report.results
+    );
+    assert_eq!(report.locked, [pkg]);
+    assert_eq!(mode(&trashed_pkg), 0o111);
+    unlock(&trashed_pkg);
+}
+
+#[test]
+fn lf_03_with_consent_locked_folders_are_opened_and_removed() {
+    let sb = Sandbox::new();
+    if is_root(&sb) {
+        return;
+    }
+    let (cache, pkg) = locked_cache(&sb);
+    let mut dry = sb.plan(&[&cache], Execution::DryRun);
+    dry.permissions = Permissions::FixOwned;
+    let mut live = sb.plan(&[&cache], Execution::Live);
+    live.permissions = Permissions::FixOwned;
+
+    let preview = execute(&dry, &sb.ctx).unwrap();
+    assert_eq!(mode(&pkg), 0o111, "a dry run changes no mode");
+    assert_eq!(preview.locked, std::slice::from_ref(&pkg));
+    let report = execute(&live, &sb.ctx).unwrap();
+
+    assert!(
+        matches!(report.results[0].1, Outcome::Removed { partial: false, .. }),
+        "{:?}",
+        report.results
+    );
+    assert!(!exists(&cache));
+}
+
+#[test]
+fn lf_03_a_locked_folder_swapped_for_a_symlink_is_never_changed() {
+    let sb = Sandbox::new();
+    if is_root(&sb) {
+        return;
+    }
+    let (cache, pkg) = locked_cache(&sb);
+    fs::set_permissions(sb.outside.join("dir"), fs::Permissions::from_mode(0o750)).unwrap();
+    let mut plan = sb.plan(&[&cache], Execution::Live);
+    plan.permissions = Permissions::FixOwned;
+    let moved = sb.home.join("moved-pkg");
+    let (pkg_hook, moved_hook, target) = (pkg.clone(), moved.clone(), sb.outside.join("dir"));
+    BEFORE_UNLOCK.set(Some(Box::new(move |name| {
+        if name == c"pkg" {
+            // Moving a folder needs write permission on it, which the attacker (the same
+            // user) can grant and take back.
+            fs::set_permissions(&pkg_hook, fs::Permissions::from_mode(0o311)).unwrap();
+            rustix::fs::renameat(CWD, &pkg_hook, CWD, &moved_hook).unwrap();
+            fs::set_permissions(&moved_hook, fs::Permissions::from_mode(0o111)).unwrap();
+            symlink(&target, &pkg_hook).unwrap();
+        }
+    })));
+
+    let outcome = execute(&plan, &sb.ctx).unwrap().results.remove(0).1;
+    BEFORE_UNLOCK.set(None);
+
+    assert!(matches!(outcome, Outcome::Failed { .. }), "{outcome:?}");
+    assert_eq!(mode(&sb.outside.join("dir")), 0o750);
+    assert!(exists(&sb.outside.join("dir/precious")));
+    assert_eq!(mode(&moved), 0o111);
+    unlock(&moved);
+}
+
+#[test]
+fn lf_04_permission_fixes_are_counted_in_the_log() {
+    let sb = Sandbox::new();
+    if is_root(&sb) {
+        return;
+    }
+    let (cache, _) = locked_cache(&sb);
+    let mut plan = sb.plan(&[&cache], Execution::Live);
+    plan.permissions = Permissions::FixOwned;
+
+    execute(&plan, &sb.ctx).unwrap();
+
+    let log = fs::read_to_string(sb.ctx.oplog.as_ref().unwrap()).unwrap();
+    let entry: serde_json::Value = serde_json::from_str(log.lines().next().unwrap()).unwrap();
+    assert_eq!(entry["permissions_fixed"], 1, "{log}");
+}
+
+#[test]
+fn lf_02_someone_elses_unlistable_folder_stays_a_failure_and_is_never_changed() {
+    let mut sb = Sandbox::new();
+    if is_root(&sb) {
+        return;
+    }
+    let (cache, pkg) = locked_cache(&sb);
+    // To safe delete, the folder now belongs to another user.
+    sb.ctx.euid = Uid::from_raw(sb.ctx.euid.as_raw() + 1);
+    let mut plan = sb.plan(&[&cache], Execution::Live);
+    plan.permissions = Permissions::FixOwned;
+
+    let report = execute(&plan, &sb.ctx).unwrap();
+
+    assert!(
+        matches!(
+            report.results[0].1,
+            Outcome::Failed {
+                errno: Errno::ACCESS,
+                ..
+            }
+        ),
+        "{:?}",
+        report.results
+    );
+    assert!(report.locked.is_empty());
+    assert_eq!(mode(&pkg), 0o111);
+    unlock(&pkg);
 }

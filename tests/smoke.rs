@@ -385,7 +385,7 @@ fn sc_07_symlinks_are_reported_and_unreadable_dirs_make_it_partial() {
 }
 
 #[test]
-fn sc_02_sc_07_an_unmeasurable_item_is_shown_as_failed() {
+fn lf_06_scan_shows_locked_folders_and_changes_no_mode() {
     if is_root() {
         return eprintln!("skipped: molt refuses root (CL-07)");
     }
@@ -399,20 +399,21 @@ fn sc_02_sc_07_an_unmeasurable_item_is_shown_as_failed() {
 
     let (code, report) = home.scan_json();
     let human = home.molt(&["scan"], &[]);
+    let mode = fs::symlink_metadata(&pkg).unwrap().mode() & 0o7777;
     fs::set_permissions(&pkg, fs::Permissions::from_mode(0o755)).unwrap();
 
-    assert_eq!(code, Some(3));
-    let build = rule(&report, "junk")["items"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|i| i["path"].as_str().unwrap().ends_with("junk/build"))
-        .unwrap()
-        .clone();
-    assert_eq!(build["outcome"], "failed");
+    assert_eq!(code, Some(0));
+    assert_eq!(mode, 0o111);
+    assert_eq!(
+        rule(&report, "junk")["locked"],
+        serde_json::json!([pkg.to_str().unwrap()])
+    );
     let text = String::from_utf8_lossy(&human.stdout);
-    assert!(text.contains("(1 failed)"), "{text}");
-    assert!(text.contains("Partial"), "{text}");
+    assert!(text.contains("(1 locked)"), "{text}");
+    assert!(
+        text.contains("molt clean") && text.contains("ask"),
+        "{text}"
+    );
 }
 
 #[test]
