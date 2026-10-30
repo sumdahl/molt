@@ -43,7 +43,7 @@ fn sc_02_failed_items_are_counted_on_the_rule_line() {
         }],
         skipped: Vec::new(),
         inactive: Vec::new(),
-        freed_by: "molt clean",
+        freed_by: "molt clean".to_owned(),
     };
 
     let text = report.to_string();

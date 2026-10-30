@@ -17,6 +17,7 @@ use molt::safe_delete::{Mode, Permissions};
 use molt::scan::{self, Survey};
 use molt::startup::{self, Startup};
 use molt::system;
+use molt::uninstall::{self, AppName};
 
 /// Reclaim disk space on Linux, safely.
 #[derive(Parser)]
@@ -50,6 +51,9 @@ enum Command {
     /// Move old installers (.deb, .rpm, .AppImage, .iso…) in Downloads and Desktop to the
     /// trash: preview first, then ask.
     Installer(InstallerArgs),
+    /// Remove what an app left in your home (settings, data, cache, menu entries):
+    /// preview first, then ask. The program itself is left to your package manager.
+    Uninstall(UninstallArgs),
     /// Show what takes the space in a folder, largest first: a browser on a terminal, a
     /// listing otherwise. Changes nothing.
     Analyze(AnalyzeArgs),
@@ -81,6 +85,15 @@ struct InstallerArgs {
     /// Leave these rules out.
     #[arg(long, num_args = 1.., value_name = "ID")]
     skip: Vec<String>,
+    /// Delete permanently instead of moving to the trash.
+    #[arg(long)]
+    permanent: bool,
+}
+
+#[derive(Clone, Args)]
+struct UninstallArgs {
+    /// The app's folder name, exactly as in ~/.config (case matters).
+    app: String,
     /// Delete permanently instead of moving to the trash.
     #[arg(long)]
     permanent: bool,
@@ -193,6 +206,7 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         Some(Command::Clean(args)) => run_clean(cli, args, &startup),
         Some(Command::Purge(args)) => run_purge(cli, args, &startup),
         Some(Command::Installer(args)) => run_installer(cli, args, &startup),
+        Some(Command::Uninstall(args)) => run_uninstall(cli, args, &startup),
         Some(Command::System(args)) => run_system(cli, args, &startup),
         // AN-09: read-only, so a dry run is the same run.
         Some(Command::Analyze(args)) => run_analyze(cli, args, &startup),
@@ -269,7 +283,7 @@ fn run_purge(
         .retain(|skip| picked(&skip.rule) || !is_kind(&skip.rule));
     let mut preview =
         scan::measure_findings(&kinds, findings, startup, args.trash.then_some(Mode::Trash))?;
-    preview.report.freed_by = "molt purge";
+    preview.report.freed_by = "molt purge".to_owned();
     print_preview(cli, &preview, &[])?;
     if !cli.json {
         print_left_out(
@@ -303,7 +317,7 @@ fn run_installer(
     // IN-04
     let mode = args.permanent.then_some(Mode::Permanent);
     let mut preview = scan::measure_findings(&rules, findings, startup, mode)?;
-    preview.report.freed_by = "molt installer";
+    preview.report.freed_by = "molt installer".to_owned();
     print_preview(cli, &preview, &[])?;
     if !cli.json {
         print_left_out(
@@ -311,6 +325,38 @@ fn run_installer(
             "installers",
             &[("recently-changed", "changed in the last 14 days")],
         );
+    }
+    ask_and_act(cli, startup, &preview, &rules, false)
+}
+
+/// UN-01 to UN-07: an app's leftovers in the home, then on as `clean` does.
+fn run_uninstall(
+    cli: &Cli,
+    args: &UninstallArgs,
+    startup: &Startup,
+) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let app = match AppName::try_from(args.app.as_str()) {
+        Ok(app) => app,
+        Err(why) => {
+            eprintln!("molt: {why}; nothing changed");
+            return Ok(ExitCode::from(2));
+        }
+    };
+    let (rules, busy) = clean::leave_out_busy(uninstall::rules(&app)?, &processes::running());
+    // UN-05
+    let mode = args.permanent.then_some(Mode::Permanent);
+    let mut preview = scan::survey(&rules, startup, mode)?;
+    preview.report.freed_by = format!("molt uninstall {app}");
+    print_preview(cli, &preview, &busy)?;
+    if !cli.json {
+        if !busy.is_empty() {
+            // UN-04
+            println!("{app} is running: quit {app} first, then run this again.");
+        } else if preview.report.rules.is_empty() {
+            // UN-07
+            println!("Nothing of {app} in your home.");
+        }
+        println!("{app} itself isn't removed: use your package manager for the program.");
     }
     ask_and_act(cli, startup, &preview, &rules, false)
 }

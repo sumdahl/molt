@@ -4,7 +4,7 @@ Reclaim disk space on Linux, safely.
 
 molt finds what is filling your disk (caches, build artifacts, old packages, installers, leftovers from removed apps), shows you exactly what it would remove, and removes only what it can prove is safe to remove. It works on any Linux distribution. Distro-specific steps turn on only where their tools are installed; pacman is the first, with apt, dnf, zypper, Flatpak and Snap planned.
 
-> **Status: v0.1.0, early.** `molt scan`, `molt clean`, `molt purge`, `molt installer`, `molt system`, `molt analyze` and `molt status` work. Other commands are being built spec-first.
+> **Status: v0.1.0, early.** `molt scan`, `molt clean`, `molt purge`, `molt installer`, `molt uninstall`, `molt system`, `molt analyze` and `molt status` work. Other commands are being built spec-first.
 
 ## Commands
 
@@ -54,6 +54,13 @@ molt installer --dry-run           # what would go
 molt installer --permanent         # delete instead of trashing
 ```
 
+`molt uninstall <app>` removes what an app left in your home: its folder in `~/.config`, `~/.local/share`, `~/.local/state` and `~/.cache`, its `~/.<app>` dot-folder, and its menu and autostart entries. The name must match the folder exactly (`Code`, not `code`), and names of shared folders like `applications` or `Trash` are refused. Nothing is touched while the app is running. The cache is deleted; everything else goes to the trash. The program itself is left to your package manager for now.
+
+```sh
+molt uninstall chromium --dry-run  # what it left, and where
+molt uninstall Code --permanent    # delete instead of trashing
+```
+
 `molt analyze [PATH]` shows where the space in a folder goes, largest first, without changing anything. On a terminal it opens a full-screen browser (`j`/`k` or arrows to move, `l`/Enter to open, `h` to go up, `s` to sort, `r` to measure again, `Space` to mark, `d` to move marked items to the trash, `?` for help, `q` to quit); piped, or with `--list`, it prints a listing: on-disk sizes, hard links counted once, symlinks and other filesystems never entered. A `+` marks a size that's a lower bound because something inside couldn't be read.
 
 ```sh
@@ -80,7 +87,7 @@ molt system --only journal         # just one task
 
 | Command | What it does |
 |---|---|
-| `molt uninstall` | Remove an app and its leftovers, across package managers |
+| `molt uninstall` (program) | Remove the program too: pacman, apt, dnf, zypper, flatpak, snap, AppImage |
 | `molt optimize` | Safe maintenance: orphan packages, TRIM, font cache, failed units |
 | `molt history` | Show what molt has removed |
 

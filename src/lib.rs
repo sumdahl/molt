@@ -14,3 +14,4 @@ pub mod startup;
 pub mod status;
 pub mod system;
 mod terminal;
+pub mod uninstall;

@@ -1564,3 +1564,146 @@ fn st_18_watch_needs_a_terminal_and_no_json() {
         assert_eq!(home.molt(args, &[]).status.code(), Some(2), "{args:?}");
     }
 }
+
+/// A temp home with every UN-02 location filled for `foo`, plus things uninstall must
+/// leave: `foo-bar`'s settings, a symlink at `~/.foo` and a whitelisted state folder.
+/// Gives the home, foo's leftovers (settings first, then the cache) and what must stay.
+fn uninstall_home() -> (Home, Vec<PathBuf>, PathBuf, Vec<PathBuf>) {
+    let home = Home::new();
+    let leftovers = [
+        ".config/foo/settings.json",
+        ".local/share/foo/data.db",
+        ".local/share/applications/foo.desktop",
+        ".config/autostart/foo.desktop",
+    ]
+    .map(|rel| home.file(rel, 4096))
+    .to_vec();
+    let cache = home.file(".cache/foo/blob", 4096);
+    let other = home.file(".config/foo-bar/settings.json", 4096);
+    let state = home.file(".local/state/foo/history", 4096);
+    home.config("whitelist = [\"~/.local/state/foo\"]");
+    let link = home.path.join(".foo");
+    std::os::unix::fs::symlink(&other, &link).unwrap();
+    (home, leftovers, cache, vec![other, state, link])
+}
+
+#[test]
+fn un_01_un_03_bad_and_shared_names_are_usage_errors() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let (home, ..) = uninstall_home();
+    home.file(".local/share/Trash/files/old", 4096);
+    let before = snapshot(&home.path);
+    for name in [
+        "../foo",
+        "foo/..",
+        ".foo",
+        "f*",
+        "applications",
+        "Trash",
+        "molt",
+    ] {
+        let out = home.molt(&["uninstall", name, "--yes"], &[]);
+        assert_eq!(out.status.code(), Some(2), "{name}: {}", stdout(&out));
+        assert!(stderr(&out).contains("nothing changed"), "{}", stderr(&out));
+    }
+    assert_eq!(snapshot(&home.path), before);
+}
+
+#[test]
+fn un_06_un_07_p_05_dry_run_and_no_terminal_change_nothing() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let (home, ..) = uninstall_home();
+    let before = snapshot(&home.path);
+
+    let dry = home.molt(&["uninstall", "foo", "--dry-run"], &[]);
+    assert!(dry.status.success(), "{}", stderr(&dry));
+    let text = stdout(&dry);
+    assert!(text.contains("with `molt uninstall foo`"), "{text}");
+    assert!(text.contains("(to trash)"), "{text}");
+    assert!(text.contains("foo itself isn't removed"), "{text}");
+    assert_eq!(snapshot(&home.path), before);
+
+    let piped = home.molt(&["uninstall", "foo"], &[]);
+    assert_eq!(piped.status.code(), Some(1), "no terminal needs --yes");
+    assert_eq!(snapshot(&home.path), before);
+
+    let none = home.molt(&["uninstall", "nothing-here", "--yes"], &[]);
+    assert!(none.status.success(), "{}", stderr(&none));
+    assert!(
+        stdout(&none).contains("Nothing of nothing-here in your home"),
+        "{}",
+        stdout(&none)
+    );
+    assert_eq!(snapshot(&home.path), before);
+}
+
+#[test]
+fn un_02_un_05_yes_trashes_settings_and_deletes_the_cache() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let (home, leftovers, cache, kept) = uninstall_home();
+
+    let out = home.molt(&["uninstall", "foo", "--yes"], &[]);
+    assert!(out.status.success(), "{}\n{}", stdout(&out), stderr(&out));
+    for path in leftovers.iter().chain([&cache]) {
+        assert!(!exists(path), "{}", path.display());
+    }
+    for path in &kept {
+        assert!(exists(path), "{}", path.display());
+    }
+    let trashed = fs::read_dir(home.path.join(".local/share/Trash/files"))
+        .unwrap()
+        .count();
+    assert_eq!(
+        trashed, 4,
+        "settings, data and the two entries; not the cache"
+    );
+}
+
+#[test]
+fn un_05_permanent_puts_nothing_in_the_trash() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let (home, leftovers, cache, _) = uninstall_home();
+
+    let out = home.molt(&["uninstall", "foo", "--permanent", "--yes"], &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    for path in leftovers.iter().chain([&cache]) {
+        assert!(!exists(path), "{}", path.display());
+    }
+    assert!(!exists(&home.path.join(".local/share/Trash/files")));
+}
+
+#[test]
+fn un_04_a_running_app_is_left_alone() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let settings = home.file(".config/molt-busy-app/settings", 4096);
+    let busy = home.path.join("molt-busy-app");
+    fs::copy("/bin/sh", &busy).unwrap();
+    let mut program = spawn_fresh_copy(Command::new(&busy).args(["-c", "read line"]));
+    let comm = format!("/proc/{}/comm", program.id());
+    while !fs::read_to_string(&comm).is_ok_and(|c| c.trim_end() == "molt-busy-app") {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+
+    let out = home.molt(&["uninstall", "molt-busy-app", "--yes"], &[]);
+    program.kill().unwrap();
+    program.wait().unwrap();
+
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(exists(&settings));
+    assert!(
+        stdout(&out).contains("quit molt-busy-app first"),
+        "{}",
+        stdout(&out)
+    );
+}
