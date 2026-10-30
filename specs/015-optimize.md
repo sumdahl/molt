@@ -1,6 +1,6 @@
 # 015: `molt optimize`
 
-Status: Draft (#48)
+Status: Accepted (#48)
 Prefix: OP
 
 ## Goal
