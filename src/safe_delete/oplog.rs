@@ -22,6 +22,13 @@ struct Entry<'a> {
     partial: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     errno: Option<i32>,
+    /// LF-04: locked folders opened with `u+rwx` to remove this candidate.
+    #[serde(skip_serializing_if = "is_zero")]
+    permissions_fixed: u32,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 impl OpLog {
@@ -39,7 +46,13 @@ impl OpLog {
     }
 
     /// Appends an entry if `outcome` changed the filesystem.
-    pub(super) fn record(&mut self, mode: Mode, path: &Path, outcome: &Outcome) -> io::Result<()> {
+    pub(super) fn record(
+        &mut self,
+        mode: Mode,
+        path: &Path,
+        outcome: &Outcome,
+        permissions_fixed: u32,
+    ) -> io::Result<()> {
         let (bytes, outcome, partial, errno) = match *outcome {
             Outcome::Removed { bytes, partial } => (bytes, "removed", partial, None),
             Outcome::Trashed { bytes } => (bytes, "trashed", false, None),
@@ -57,6 +70,7 @@ impl OpLog {
             outcome,
             partial,
             errno,
+            permissions_fixed,
         };
         let mut line = serde_json::to_string(&entry)?;
         line.push('\n');

@@ -6,13 +6,14 @@
 use std::collections::HashMap;
 use std::ffi::{CStr, CString, OsStr};
 use std::fmt;
-use std::mem;
-use std::os::fd::OwnedFd;
+use std::os::fd::{AsRawFd, OwnedFd};
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
 
 pub use rustix::fs::Uid;
 use rustix::fs::{
-    AtFlags, CWD, Dir, FileType, Mode as FileMode, OFlags, Stat, fstat, openat, statat, unlinkat,
+    AtFlags, CWD, Dir, FileType, Mode as FileMode, OFlags, Stat, chmodat, fstat, openat, statat,
+    unlinkat,
 };
 pub use rustix::io::Errno;
 use rustix::path::Arg;
@@ -94,6 +95,15 @@ pub enum Mode {
     Trash,
 }
 
+/// Whether safe delete may change permissions to remove a locked folder (011).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Permissions {
+    /// Locked folders are kept and listed (LF-01).
+    Keep,
+    /// LF-03, LF-05: add `u+rwx` to folders the user owns. Set only from the user's consent.
+    FixOwned,
+}
+
 /// Who created the plan. Only an explicit system step may run as root (SD-16, P-04).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Privilege {
@@ -107,6 +117,7 @@ pub struct Plan {
     pub mode: Mode,
     pub execution: Execution,
     pub privilege: Privilege,
+    pub permissions: Permissions,
 }
 
 /// The user environment the guard protects. Passed in, never read from the process,
@@ -170,6 +181,8 @@ pub enum Outcome {
 #[derive(Debug, Clone)]
 pub struct Report {
     pub results: Vec<(PathBuf, Outcome)>,
+    /// LF-01, LF-06: folders the user owns but can't list, inside the candidates.
+    pub locked: Vec<PathBuf>,
 }
 
 impl Report {
@@ -224,6 +237,10 @@ pub fn execute(plan: &Plan, ctx: &Context) -> Result<Report, PlanRefused> {
     let mut remover = Remover {
         mode: plan.mode,
         execution: plan.execution,
+        permissions: plan.permissions,
+        euid: ctx.euid,
+        locked: Vec::new(),
+        fixed: 0,
         bins: trash::Bins::new(&ctx.data_home, ctx.euid),
         links: HashMap::new(),
     };
@@ -235,13 +252,18 @@ pub fn execute(plan: &Plan, ctx: &Context) -> Result<Report, PlanRefused> {
         } else {
             let outcome = remover.run(candidate, &guard);
             if let Some(log) = &mut oplog {
-                log_failed = log.record(plan.mode, &candidate.path, &outcome).is_err();
+                log_failed = log
+                    .record(plan.mode, &candidate.path, &outcome, remover.fixed)
+                    .is_err();
             }
             outcome
         };
         results.push((candidate.path.clone(), outcome));
     }
-    Ok(Report { results })
+    Ok(Report {
+        results,
+        locked: remover.locked,
+    })
 }
 
 /// Directories whose `$HOME`-relative contents are secret (SD-02).
@@ -337,6 +359,8 @@ impl From<Errno> for Stop {
 struct Tally {
     bytes: u64,
     partial: bool,
+    /// SD-07: a mount was found inside.
+    mounts: bool,
 }
 
 /// Opens path components for `*at` calls only, never through a symlink.
@@ -354,6 +378,12 @@ const LIST: OFlags = OFlags::RDONLY
 struct Remover {
     mode: Mode,
     execution: Execution,
+    permissions: Permissions,
+    euid: Uid,
+    /// Every locked folder seen in the plan (LF-01).
+    locked: Vec<PathBuf>,
+    /// Folders whose permissions were changed for the current candidate (LF-04).
+    fixed: u32,
     bins: trash::Bins,
     /// SD-13: hard-linked inodes seen so far, as (link count at first sight, links seen).
     links: HashMap<(u64, u64), (u64, u64)>,
@@ -362,9 +392,10 @@ struct Remover {
 impl Remover {
     fn run(&mut self, candidate: &Candidate, guard: &Guard) -> Outcome {
         let mut tally = Tally::default();
+        self.fixed = 0;
         match self.remove_candidate(candidate, guard, &mut tally) {
             Ok(()) => {
-                let Tally { bytes, partial } = tally;
+                let Tally { bytes, partial, .. } = tally;
                 match (self.mode, self.execution) {
                     (Mode::Permanent, Execution::DryRun) => Outcome::WouldRemove { bytes, partial },
                     (Mode::Permanent, Execution::Live) => Outcome::Removed { bytes, partial },
@@ -420,12 +451,13 @@ impl Remover {
             return Err(Stop::Skip(Reason::MountPoint));
         }
 
+        let path = parent.join(name);
         match self.mode {
             Mode::Permanent => {
-                tally.partial = !self.delete(&parent_fd, name, dir.as_ref(), &stat, tally)?;
+                tally.partial = !self.delete(&parent_fd, &path, dir.as_ref(), &stat, tally)?;
                 Ok(())
             }
-            Mode::Trash => self.trash(&parent, &parent_fd, name, dir.as_ref(), &stat, tally),
+            Mode::Trash => self.trash(&parent_fd, &path, dir.as_ref(), &stat, tally),
         }
     }
 
@@ -434,13 +466,14 @@ impl Remover {
     fn delete(
         &mut self,
         parent_fd: &OwnedFd,
-        name: &OsStr,
+        path: &Path,
         dir: Option<&OwnedFd>,
         stat: &Stat,
         tally: &mut Tally,
     ) -> Result<bool, Errno> {
+        let name = path.file_name().ok_or(Errno::INVAL)?;
         match dir {
-            Some(dir) => self.remove_dir(parent_fd, name, dir, stat, tally),
+            Some(dir) => self.remove_dir(parent_fd, path, dir, stat, tally),
             None => self
                 .unlink(parent_fd, name, stat, AtFlags::empty(), tally)
                 .map(|()| true),
@@ -450,20 +483,26 @@ impl Remover {
     /// SD-11: moves the candidate into the trash on its own filesystem.
     fn trash(
         &mut self,
-        parent: &Path,
         parent_fd: &OwnedFd,
-        name: &OsStr,
+        path: &Path,
         dir: Option<&OwnedFd>,
         stat: &Stat,
         tally: &mut Tally,
     ) -> Result<(), Stop> {
         // A dry-run delete measures what emptying the trash would free, and finds mounts.
-        let execution = mem::replace(&mut self.execution, Execution::DryRun);
-        let whole = self.delete(parent_fd, name, dir, stat, tally);
-        self.execution = execution;
-        if !whole? {
+        // LF-01: locked folders don't stop a move; a rename needn't read inside.
+        let (execution, permissions) = (self.execution, self.permissions);
+        self.execution = Execution::DryRun;
+        self.permissions = Permissions::Keep;
+        let measured = self.delete(parent_fd, path, dir, stat, tally);
+        (self.execution, self.permissions) = (execution, permissions);
+        measured?;
+        if tally.mounts {
             return Err(Stop::Skip(Reason::MountPoint));
         }
+        let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
+            return Err(Stop::Skip(Reason::Protected));
+        };
         let no_trash = |_| Stop::Skip(Reason::NoTrash);
         let bin = self
             .bins
@@ -476,26 +515,26 @@ impl Remover {
         // where it can be restored; rename never follows a symlink.
         // SD-04 guarantees a UTF-8 name.
         let name = name.to_str().ok_or(Stop::Skip(Reason::InvalidPath))?;
-        bin.put(parent_fd, name, &parent.join(name))
-            .map_err(|errno| match errno {
-                // Same st_dev but a different mount (a bind mount): no trash here.
-                Errno::XDEV => Stop::Skip(Reason::NoTrash),
-                errno => Stop::Fail(errno),
-            })
+        bin.put(parent_fd, name, path).map_err(|errno| match errno {
+            // Same st_dev but a different mount (a bind mount): no trash here.
+            Errno::XDEV => Stop::Skip(Reason::NoTrash),
+            errno => Stop::Fail(errno),
+        })
     }
 
-    /// Empties `dir`, then removes it from `parent` unless something inside had to stay.
-    /// Returns whether it was removed.
+    /// Empties `dir` (at `path`), then removes it from `parent` unless something inside
+    /// had to stay. Returns whether it was removed.
     fn remove_dir(
         &mut self,
         parent: &OwnedFd,
-        name: impl Arg,
+        path: &Path,
         dir: &OwnedFd,
         stat: &Stat,
         tally: &mut Tally,
     ) -> Result<bool, Errno> {
-        let emptied = self.remove_contents(dir, Identity::from(stat).dev, tally)?;
+        let emptied = self.remove_contents(dir, path, Identity::from(stat).dev, tally)?;
         if emptied {
+            let name = path.file_name().ok_or(Errno::INVAL)?;
             self.unlink(parent, name, stat, AtFlags::REMOVEDIR, tally)?;
         }
         Ok(emptied)
@@ -509,6 +548,7 @@ impl Remover {
     fn remove_contents(
         &mut self,
         dir: &OwnedFd,
+        path: &Path,
         dev: u64,
         tally: &mut Tally,
     ) -> Result<bool, Errno> {
@@ -518,18 +558,74 @@ impl Remover {
             let identity = Identity::from(&stat);
             if identity.dev != dev {
                 emptied = false;
+                tally.mounts = true;
             } else if identity.file_type != FileType::Directory {
                 self.unlink(dir, &name, &stat, AtFlags::empty(), tally)?;
             } else {
+                let sub_path = path.join(OsStr::from_bytes(name.to_bytes()));
                 #[cfg(test)]
                 tests::before_descend(&name);
-                let sub = openat(dir, &name, LIST, FileMode::empty())?;
+                let Some(sub) = self.open_subdir(dir, &name, &stat, &sub_path)? else {
+                    emptied = false;
+                    continue;
+                };
                 let sub_stat = fstat(&sub)?;
-                emptied &= Identity::from(&sub_stat).dev == dev
-                    && self.remove_dir(dir, &name, &sub, &sub_stat, tally)?;
+                if Identity::from(&sub_stat).dev != dev {
+                    emptied = false;
+                    tally.mounts = true;
+                } else {
+                    emptied &= self.remove_dir(dir, &sub_path, &sub, &sub_stat, tally)?;
+                }
             }
         }
         Ok(emptied)
+    }
+
+    /// Opens subdirectory `name` for listing. `None` means it is a locked folder that stays
+    /// (LF-01): the user owns it but can't list it, and has not agreed to open it.
+    fn open_subdir(
+        &mut self,
+        dir: &OwnedFd,
+        name: &CStr,
+        stat: &Stat,
+        path: &Path,
+    ) -> Result<Option<OwnedFd>, Errno> {
+        match openat(dir, name, LIST, FileMode::empty()) {
+            // LF-02: someone else's folder stays a failure.
+            Err(Errno::ACCESS) if stat.st_uid == self.euid.as_raw() => {}
+            other => return other.map(Some),
+        }
+        self.locked.push(path.to_path_buf());
+        if (self.permissions, self.execution) != (Permissions::FixOwned, Execution::Live) {
+            return Ok(None);
+        }
+        self.unlock(dir, name, stat).map(Some)
+    }
+
+    /// LF-03: adds `u+rwx` to a locked folder through a handle whose identity was checked,
+    /// never by path, so a folder swapped for a symlink can't redirect the change.
+    fn unlock(&mut self, dir: &OwnedFd, name: &CStr, stat: &Stat) -> Result<OwnedFd, Errno> {
+        #[cfg(test)]
+        tests::before_unlock(name);
+        let handle = openat(dir, name, WALK, FileMode::empty())?;
+        let held = fstat(&handle)?;
+        let expected = Identity::from(stat);
+        if (Identity::from(&held).dev, Identity::from(&held).ino) != (expected.dev, expected.ino)
+            || held.st_uid != self.euid.as_raw()
+        {
+            return Err(Errno::STALE);
+        }
+        let mode = FileMode::from_raw_mode(held.st_mode) | FileMode::RWXU;
+        let magic = format!("/proc/self/fd/{}", handle.as_raw_fd());
+        chmodat(CWD, magic.as_str(), mode, AtFlags::empty())?;
+        self.fixed += 1;
+        // Reopen for listing and check it is still the same folder.
+        let sub = openat(dir, name, LIST, FileMode::empty())?;
+        let reopened = Identity::from(&fstat(&sub)?);
+        if (reopened.dev, reopened.ino) != (expected.dev, expected.ino) {
+            return Err(Errno::STALE);
+        }
+        Ok(sub)
     }
 
     /// Removes one entry (SD-12: only in a live run) and counts what it frees.

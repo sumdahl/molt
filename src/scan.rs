@@ -3,13 +3,13 @@
 use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
 use crate::rules::{self, Category, Match, Rule, RuleId, SkipReason};
 use crate::safe_delete::{
-    self, Candidate, Context, Execution, Mode, Outcome, Plan, PlanRefused, Privilege,
+    self, Candidate, Context, Execution, Mode, Outcome, Permissions, Plan, PlanRefused, Privilege,
 };
 use crate::startup::Startup;
 
@@ -35,6 +35,8 @@ pub struct RuleReport {
     pub bytes: u64,
     pub clean_with: Vec<String>,
     pub items: Vec<Item>,
+    /// LF-06: folders the user owns but can't read; their contents weren't measured.
+    pub locked: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -57,12 +59,19 @@ pub struct SkipEntry {
 pub fn scan(startup: &Startup) -> Result<ScanReport, PlanRefused> {
     let env = &startup.env;
     let findings = rules::find(&startup.rules, &env.dirs, &env.search_path);
-    let outcomes = measure(&findings.matches, &env.context(&startup.config))?;
+    let (outcomes, locked) = measure(&findings.matches, &env.context(&startup.config))?;
 
     let mut rules: Vec<RuleReport> = startup.rules.iter().map(RuleReport::new).collect();
     for (found, outcome) in findings.matches.iter().zip(outcomes) {
         if let Some(rule) = rules.iter_mut().find(|rule| rule.id == found.rule) {
-            rule.add(found.candidate.path(), outcome);
+            let path = found.candidate.path();
+            rule.add(path, outcome);
+            rule.locked.extend(
+                locked
+                    .iter()
+                    .filter(|folder| folder.starts_with(path))
+                    .map(|folder| folder.to_string_lossy().into_owned()),
+            );
         }
     }
     // SC-03: rules with no matches are left out.
@@ -94,8 +103,10 @@ pub fn scan(startup: &Startup) -> Result<ScanReport, PlanRefused> {
     })
 }
 
-/// SC-02: a safe-delete dry run of each mode's candidates. Returns one outcome per match.
-fn measure(matches: &[Match], ctx: &Context) -> Result<Vec<Outcome>, PlanRefused> {
+/// SC-02: a safe-delete dry run of each mode's candidates. Returns one outcome per match,
+/// and the locked folders found (LF-06).
+fn measure(matches: &[Match], ctx: &Context) -> Result<(Vec<Outcome>, Vec<PathBuf>), PlanRefused> {
+    let mut locked = Vec::new();
     let mut outcomes = vec![None; matches.len()];
     for mode in [Mode::Permanent, Mode::Trash] {
         let (indices, candidates): (Vec<usize>, Vec<Candidate>) = matches
@@ -109,13 +120,15 @@ fn measure(matches: &[Match], ctx: &Context) -> Result<Vec<Outcome>, PlanRefused
             mode,
             execution: Execution::DryRun,
             privilege: Privilege::User,
+            permissions: Permissions::Keep,
         };
         let report = safe_delete::execute(&plan, ctx)?;
+        locked.extend(report.locked);
         for (i, (_, outcome)) in indices.into_iter().zip(report.results) {
             outcomes[i] = Some(outcome);
         }
     }
-    Ok(outcomes.into_iter().flatten().collect())
+    Ok((outcomes.into_iter().flatten().collect(), locked))
 }
 
 /// SC-03: categories by total size, then rules within each, largest first.
@@ -146,6 +159,7 @@ impl RuleReport {
             bytes: 0,
             clean_with: rule.clean_with.clone(),
             items: Vec::new(),
+            locked: Vec::new(),
         }
     }
 
@@ -231,12 +245,15 @@ impl fmt::Display for ScanReport {
                 if !rule.clean_with.is_empty() {
                     write!(f, "  via `{}`", rule.clean_with.join(" "))?;
                 }
-                // SC-02
+                // SC-02, LF-06
                 for outcome in ["skipped", "failed"] {
                     match rule.count(outcome) {
                         0 => {}
                         n => write!(f, "  ({n} {outcome})")?,
                     }
+                }
+                if !rule.locked.is_empty() {
+                    write!(f, "  ({} locked)", rule.locked.len())?;
                 }
                 writeln!(f)?;
             }
@@ -247,6 +264,14 @@ impl fmt::Display for ScanReport {
                 f,
                 "{} rules inactive: the tools they clean up after aren't installed.",
                 self.inactive.len()
+            )?;
+        }
+        let locked: usize = self.rules.iter().map(|rule| rule.locked.len()).sum();
+        if locked > 0 {
+            writeln!(
+                f,
+                "{locked} locked folders: you own them but can't read them, so their contents \
+                 weren't measured. `molt clean` will ask before opening them (u+rwx)."
             )?;
         }
         if self.partial {

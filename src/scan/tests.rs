@@ -19,3 +19,36 @@ fn sc_04_sizes_use_binary_units_with_one_decimal() {
         assert_eq!(human_size(bytes), expected, "{bytes}");
     }
 }
+
+#[test]
+fn sc_02_failed_items_are_counted_on_the_rule_line() {
+    let report = ScanReport {
+        total: 0,
+        partial: true,
+        rules: vec![RuleReport {
+            id: RuleId::try_from("x".to_owned()).unwrap(),
+            name: "X cache".to_owned(),
+            category: Category::Apps,
+            mode: Mode::Permanent,
+            bytes: 0,
+            clean_with: Vec::new(),
+            items: vec![Item {
+                path: "/h/x".to_owned(),
+                bytes: 0,
+                outcome: "failed",
+                reason: Some("Permission denied".to_owned()),
+            }],
+            locked: Vec::new(),
+        }],
+        skipped: Vec::new(),
+        inactive: Vec::new(),
+    };
+
+    let text = report.to_string();
+
+    assert!(
+        text.contains("X cache") && text.contains("(1 failed)"),
+        "{text}"
+    );
+    assert!(text.contains("Partial"), "{text}");
+}
