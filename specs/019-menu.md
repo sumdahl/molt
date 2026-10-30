@@ -1,6 +1,6 @@
 # 019: The `molt` menu
 
-Status: Draft (#60)
+Status: Accepted (#60)
 Prefix: MN
 
 ## Goal
