@@ -1,6 +1,6 @@
 # 005: `molt scan`
 
-Status: Draft
+Status: Accepted
 Prefix: SC
 
 ## Goal
@@ -30,6 +30,8 @@ Prefix: SC
 - **SC-06** With `--json`, the report is one JSON object on stdout: the total, and for each rule its id, name, category, mode, bytes, `clean_with`, and items (path, bytes, outcome or skip reason), plus the rule-engine skips (RE-09, RE-10) and the inactive rule ids. The shape is a stable interface (P-11).
 - **SC-07** Matches the rules engine skipped (symlinks, unreadable directories) are reported, not counted. If any directory couldn't be read, the exit code is 3 (P-13) and the report says the scan is partial (P-12).
 - **SC-08** The global flags work after the command name: `molt scan --json` is the same as `molt --json scan` (CL-01).
+- **SC-09** `molt` with no command runs `scan`.
+- **SC-10** A rule's `requires` (RE-08) is looked up only in the absolute entries of `$PATH`. Relative entries, which would depend on the current directory, are ignored.
 
 ## Test strategy
 
@@ -37,8 +39,9 @@ Prefix: SC
 - SC-01: snapshot the whole temp home, including the state and trash directories, before and after `molt scan`, `molt scan --live` and `molt scan --dry-run`.
 - SC-04 is a table test of the size formatter.
 
-## Open questions
+## Decisions
 
-- **What `molt` with no command does.** Run `scan`, or keep printing help? (Proposal: run `scan`. It's read-only, so it's the safe default, and it's the first thing anyone wants. The interactive menu (phase 5) can take over later.)
-- **Units.** Binary units (`GiB`, matching `du -h`/`df -h`) or decimal (`GB`, matching disk labels and most file managers)? (Proposal: binary, as SC-04.)
-- **Detail.** Should the human-readable report list every path, or only one line per rule? (Proposal: one line per rule, with paths in `--json`. `node_modules`-style rules can have thousands of paths.)
+- **No command means `scan`** (SC-09), until the interactive menu (phase 5) takes over.
+- **Binary units** (SC-04), matching `du -h` and `df -h`.
+- **One line per rule** in the human report; every path is in `--json` (SC-06). Rules can match thousands of paths.
+- **No dry-run notice for `scan`.** The CL-06 notice says `--live` acts, which isn't true for a read-only command, so only commands that change files print it.
