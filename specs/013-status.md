@@ -1,6 +1,6 @@
 # 013: `molt status`
 
-Status: Implemented (ST-01 to ST-08); #37 and #38 add more
+Status: Implemented (ST-01 to ST-14); #38 adds the live view
 Prefix: ST
 
 ## Goal
@@ -24,6 +24,23 @@ Prefix: ST
 - **ST-07** `--json` prints one object with `cpu`, `memory`, `disks` and `processes`, sizes in bytes, shares as numbers from 0 to 100. A field the machine doesn't report is left out, not zero.
 - **ST-08** The exit code is 0, also with nearly full disks: `status` reports, it doesn't judge (P-13 leaves 3 for partial actions).
 
+### Hardware and the health score (#37)
+
+- **ST-09** **Rates**: disk reads and writes per second for each whole disk (`/proc/diskstats`, sectors × 512, partitions and `loop`/`ram`/`zram` devices left out) and network received and sent per second for each interface except `lo` (`/proc/net/dev`), over the same 200 ms sample as the CPU. The text leaves out interfaces with no traffic in the sample and says how many; `--json` has them all.
+- **ST-10** **Temperatures**: from `/sys/class/hwmon/*/temp*_input` (millidegrees), grouped by sensor `name`, with each reading's `temp*_label` if there is one. The text shows the hottest reading per sensor; `--json` has them all. A reading above its `temp*_crit` (or `temp*_max`, if there's no critical one) is marked `(hot)`.
+- **ST-11** **Fans**: each `fan*_input` (RPM) with its sensor name. A fan at 0 RPM is shown as stopped, not as a fault: many fans stop when cool.
+- **ST-12** **Battery**: for each `/sys/class/power_supply/*` of `type` `Battery`, the charge (`capacity`, %), the `status` (Charging, Discharging, Full, Not charging), and its health as `energy_full` / `energy_full_design` (or the `charge_*` pair) where both exist.
+- **ST-13** **Health score**: a whole number from 0 to 100, written down in full here so it's never a mystery. It starts at 100 and loses points:
+  - each disk at 90 % or more: −15; at 80 % or more: −5,
+  - memory available under 10 % of total: −15; under 20 %: −5,
+  - swap used over 50 %: −5,
+  - load over 2 × the CPU count (1-minute load): −10,
+  - any reading marked `(hot)`: −15,
+  - each zombie: −2, at most −10,
+  - battery health under 60 %: −10,
+  and never drops below 0. The text shows the score and every reason that cost points ("−15: / is 92 % full"); `--json` has `score` and `reasons`.
+- **ST-14** Anything the machine doesn't have (no battery, no fans, no hwmon) is left out of the text and the JSON, and costs no points.
+
 ## Test strategy
 
 - The parsers take text (`/proc/stat`, `/proc/loadavg`, `/proc/meminfo`, `/proc/self/mounts`, `/proc/<pid>/stat`), so unit tests feed them fixtures, including missing fields, odd process names (`(a b) c)`), and mount paths with escaped spaces (`\040`).
@@ -37,3 +54,6 @@ Prefix: ST
 - **Device-backed and network filesystems only**, without pseudo filesystems and bind repeats.
 - **Nearly full at 90 %.**
 - **Each disk is measured on its own thread, with a 1 second limit**, so a dead share can't hang `status`.
+- **The health score is ST-13's formula, as listed.** Simple on purpose, so anyone can check a score by hand.
+- **The text shows the hottest reading per sensor**; `--json` has every reading.
+- **Temperatures in °C.**

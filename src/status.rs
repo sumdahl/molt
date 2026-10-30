@@ -4,9 +4,10 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs;
+use std::path::Path;
 use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
@@ -59,6 +60,75 @@ pub struct Status {
     pub memory: Option<Memory>,
     pub disks: Vec<Disk>,
     pub processes: Processes,
+    /// ST-09: bytes read and written per second, per whole disk.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub disk_io: Vec<Rate>,
+    /// ST-09: bytes received and sent per second, per interface.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub network: Vec<Rate>,
+    /// ST-10, ST-11
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub sensors: Vec<Sensor>,
+    /// ST-12
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub batteries: Vec<Battery>,
+    /// ST-13
+    pub health: Health,
+}
+
+/// Two counters per second: read and written, or received and sent.
+#[derive(Debug, Serialize)]
+pub struct Rate {
+    pub name: String,
+    pub first: u64,
+    pub second: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Sensor {
+    pub name: String,
+    pub temperatures: Vec<Temperature>,
+    pub fans: Vec<Fan>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Temperature {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    pub celsius: f64,
+    /// Past the sensor's critical (or else maximum) limit.
+    pub hot: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Fan {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    pub rpm: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Battery {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub charge: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    /// Full charge now, as a share of the design's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub health: Option<f64>,
+}
+
+#[derive(Debug, Default, Serialize)]
+pub struct Health {
+    pub score: u8,
+    pub reasons: Vec<Reason>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Reason {
+    pub points: i32,
+    pub why: String,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -124,15 +194,17 @@ struct Mount {
 
 /// ST-01: everything, read now. Takes about `SAMPLE`.
 pub fn status() -> Status {
-    let first = read("/proc/stat").as_deref().and_then(cpu_times);
-    // The disks are measured while the CPU sample runs.
+    let sample = Sample::now();
+    // The disks are measured while the sample runs.
     let disks = thread::scope(|scope| {
         let disks = scope.spawn(disks);
         thread::sleep(SAMPLE);
         disks.join().unwrap_or_default()
     });
-    let second = read("/proc/stat").as_deref().and_then(cpu_times);
-    Status {
+    let after = Sample::now();
+    let elapsed = after.at.duration_since(sample.at);
+    let (first, second) = (sample.cpu, after.cpu);
+    let mut status = Status {
         cpu: Cpu {
             count: thread::available_parallelism().ok().map(usize::from),
             load: read("/proc/loadavg").as_deref().and_then(load),
@@ -142,7 +214,304 @@ pub fn status() -> Status {
         memory: read("/proc/meminfo").as_deref().and_then(memory),
         disks,
         processes: processes(),
+        disk_io: rates(&sample.disks, &after.disks, elapsed),
+        network: rates(&sample.network, &after.network, elapsed),
+        sensors: sensors(Path::new("/sys/class/hwmon")),
+        batteries: batteries(Path::new("/sys/class/power_supply")),
+        health: Health::default(),
+    };
+    status.health = health(&status);
+    status
+}
+
+/// The counters a rate is the change of (ST-02, ST-09).
+struct Sample {
+    at: Instant,
+    cpu: Option<CpuTimes>,
+    disks: Vec<(String, (u64, u64))>,
+    network: Vec<(String, (u64, u64))>,
+}
+
+impl Sample {
+    fn now() -> Self {
+        // Whole disks are the ones /sys/block lists; partitions aren't there.
+        let whole = |name: &str| Path::new("/sys/block").join(name).exists();
+        Self {
+            at: Instant::now(),
+            cpu: read("/proc/stat").as_deref().and_then(cpu_times),
+            disks: read("/proc/diskstats")
+                .map_or_else(Vec::new, |text| disk_counters(&text, whole)),
+            network: read("/proc/net/dev").map_or_else(Vec::new, |text| net_counters(&text)),
+        }
     }
+}
+
+/// ST-09: bytes read and written per whole disk, leaving out loop, ram and zram devices.
+fn disk_counters(text: &str, whole: impl Fn(&str) -> bool) -> Vec<(String, (u64, u64))> {
+    text.lines()
+        .filter_map(|line| {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            let name = *fields.get(2)?;
+            let virtual_disk = ["loop", "ram", "zram"].iter().any(|p| name.starts_with(p));
+            if virtual_disk || !whole(name) {
+                return None;
+            }
+            let sectors = |i: usize| fields.get(i)?.parse::<u64>().ok();
+            // Sectors are 512 bytes here, whatever the device's own size.
+            Some((name.to_owned(), (sectors(5)? * 512, sectors(9)? * 512)))
+        })
+        .collect()
+}
+
+/// ST-09: bytes received and sent per interface, except `lo`.
+fn net_counters(text: &str) -> Vec<(String, (u64, u64))> {
+    text.lines()
+        .skip(2)
+        .filter_map(|line| {
+            let (name, counters) = line.split_once(':')?;
+            let name = name.trim();
+            let fields: Vec<u64> = counters
+                .split_whitespace()
+                .map(str::parse)
+                .collect::<Result<_, _>>()
+                .ok()?;
+            if name == "lo" {
+                return None;
+            }
+            Some((name.to_owned(), (*fields.first()?, *fields.get(8)?)))
+        })
+        .collect()
+}
+
+/// Per second, for each name in both samples.
+fn rates(
+    before: &[(String, (u64, u64))],
+    after: &[(String, (u64, u64))],
+    elapsed: Duration,
+) -> Vec<Rate> {
+    let seconds = elapsed.as_secs_f64();
+    if seconds <= 0.0 {
+        return Vec::new();
+    }
+    let per_second = |delta: u64| {
+        // Display precision only; the result is rounded to whole bytes.
+        #[allow(
+            clippy::cast_precision_loss,
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss
+        )]
+        let rate = (delta as f64 / seconds).round() as u64;
+        rate
+    };
+    after
+        .iter()
+        .filter_map(|(name, (first, second))| {
+            let (_, (was_first, was_second)) = before.iter().find(|(n, _)| n == name)?;
+            Some(Rate {
+                name: name.clone(),
+                first: per_second(first.saturating_sub(*was_first)),
+                second: per_second(second.saturating_sub(*was_second)),
+            })
+        })
+        .collect()
+}
+
+/// ST-10, ST-11: each hwmon sensor under `root` that has a reading, by name.
+fn sensors(root: &Path) -> Vec<Sensor> {
+    let Ok(entries) = fs::read_dir(root) else {
+        return Vec::new();
+    };
+    let mut dirs: Vec<_> = entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .collect();
+    dirs.sort();
+    dirs.iter()
+        .filter_map(|dir| {
+            let value = |file: &str| read_trimmed(&dir.join(file));
+            let number = |file: &str| value(file).and_then(|v| v.parse::<i64>().ok());
+            let inputs = |prefix: &str| -> Vec<u32> {
+                let mut found: Vec<u32> = fs::read_dir(dir)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Result::ok)
+                    .filter_map(|entry| {
+                        let name = entry.file_name().into_string().ok()?;
+                        name.strip_prefix(prefix)?
+                            .strip_suffix("_input")?
+                            .parse()
+                            .ok()
+                    })
+                    .collect();
+                found.sort_unstable();
+                found
+            };
+            let temperatures: Vec<Temperature> = inputs("temp")
+                .into_iter()
+                .filter_map(|n| {
+                    let milli = number(&format!("temp{n}_input"))?;
+                    let limit = number(&format!("temp{n}_crit"))
+                        .or_else(|| number(&format!("temp{n}_max")))
+                        .filter(|&limit| limit > 0);
+                    Some(Temperature {
+                        label: value(&format!("temp{n}_label")),
+                        celsius: millidegrees(milli),
+                        hot: limit.is_some_and(|limit| milli >= limit),
+                    })
+                })
+                .collect();
+            let fans: Vec<Fan> = inputs("fan")
+                .into_iter()
+                .filter_map(|n| {
+                    Some(Fan {
+                        label: value(&format!("fan{n}_label")),
+                        rpm: u64::try_from(number(&format!("fan{n}_input"))?).ok()?,
+                    })
+                })
+                .collect();
+            let name = value("name")?;
+            (!temperatures.is_empty() || !fans.is_empty()).then_some(Sensor {
+                name,
+                temperatures,
+                fans,
+            })
+        })
+        .collect()
+}
+
+fn millidegrees(milli: i64) -> f64 {
+    // Sensor values are far inside f64's exact range.
+    #[allow(clippy::cast_precision_loss)]
+    let celsius = milli as f64 / 1000.0;
+    celsius
+}
+
+fn read_trimmed(path: &Path) -> Option<String> {
+    let text = fs::read_to_string(path).ok()?;
+    Some(text.trim().to_owned()).filter(|text| !text.is_empty())
+}
+
+/// ST-12: each power supply under `root` whose type is `Battery`.
+fn batteries(root: &Path) -> Vec<Battery> {
+    let Ok(entries) = fs::read_dir(root) else {
+        return Vec::new();
+    };
+    let mut found: Vec<Battery> = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let dir = entry.path();
+            let value = |file: &str| read_trimmed(&dir.join(file));
+            let number = |file: &str| value(file).and_then(|v| v.parse::<u64>().ok());
+            if value("type").as_deref() != Some("Battery") {
+                return None;
+            }
+            let pair = |kind: &str| {
+                let full = number(&format!("{kind}_full"))?;
+                let design = number(&format!("{kind}_full_design")).filter(|&d| d > 0)?;
+                Some(percent(full, design))
+            };
+            Some(Battery {
+                name: entry.file_name().to_string_lossy().into_owned(),
+                charge: number("capacity").and_then(|c| u8::try_from(c).ok()),
+                status: value("status"),
+                health: pair("energy").or_else(|| pair("charge")),
+            })
+        })
+        .collect();
+    found.sort_by(|a, b| a.name.cmp(&b.name));
+    found
+}
+
+/// ST-13: 100, less a listed number of points for each listed problem, never below 0.
+fn health(status: &Status) -> Health {
+    let mut reasons = Vec::new();
+    let mut lose = |points: i32, why: String| {
+        reasons.push(Reason {
+            points: -points,
+            why,
+        })
+    };
+    for disk in &status.disks {
+        match disk.used_share.map(f64::ceil) {
+            Some(share) if share >= 90.0 => lose(15, format!("{} is {share:.0}% full", disk.point)),
+            Some(share) if share >= 80.0 => lose(5, format!("{} is {share:.0}% full", disk.point)),
+            _ => {}
+        }
+    }
+    if let Some(memory) = &status.memory {
+        let available = percent(memory.available, memory.total.max(1));
+        if available < 10.0 {
+            lose(15, format!("only {available:.0}% of memory is available"));
+        } else if available < 20.0 {
+            lose(5, format!("only {available:.0}% of memory is available"));
+        }
+        if memory.swap_total > 0 && percent(memory.swap_used, memory.swap_total) > 50.0 {
+            lose(5, "over half the swap is in use".to_owned());
+        }
+    }
+    if let (Some([one, ..]), Some(count)) = (status.cpu.load, status.cpu.count) {
+        // CPU counts are small; f64 holds them exactly.
+        #[allow(clippy::cast_precision_loss)]
+        let limit = 2.0 * count as f64;
+        if one > limit {
+            lose(
+                10,
+                format!("the load ({one:.2}) is over twice the {count} CPUs"),
+            );
+        }
+    }
+    let hot: Vec<&str> = status
+        .sensors
+        .iter()
+        .filter(|sensor| sensor.temperatures.iter().any(|t| t.hot))
+        .map(|sensor| sensor.name.as_str())
+        .collect();
+    if !hot.is_empty() {
+        lose(15, format!("running hot: {}", hot.join(", ")));
+    }
+    let zombies = status.processes.zombies.len();
+    if zombies > 0 {
+        let points = i32::try_from(zombies.saturating_mul(2))
+            .unwrap_or(i32::MAX)
+            .min(10);
+        lose(points, format!("{zombies} zombie processes"));
+    }
+    for battery in &status.batteries {
+        if let Some(health) = battery.health.filter(|&h| h < 60.0) {
+            lose(
+                10,
+                format!("{} holds {health:.0}% of its design charge", battery.name),
+            );
+        }
+    }
+    let lost: i32 = reasons.iter().map(|reason| reason.points).sum();
+    Health {
+        score: u8::try_from((100 + lost).max(0)).unwrap_or(0),
+        reasons,
+    }
+}
+
+/// ST-10: the hottest reading of a sensor, and its fans.
+fn sensor_line(sensor: &Sensor) -> String {
+    let mut line = format!("  {:<20}", sensor.name);
+    let hottest = sensor
+        .temperatures
+        .iter()
+        .max_by(|a, b| a.celsius.total_cmp(&b.celsius));
+    if let Some(reading) = hottest {
+        line.push_str(&format!(" {:.1} °C", reading.celsius));
+        if reading.hot {
+            line.push_str(" (hot)");
+        }
+    }
+    for fan in &sensor.fans {
+        let label = fan.label.as_deref().unwrap_or("fan");
+        match fan.rpm {
+            0 => line.push_str(&format!("  {label} stopped")),
+            rpm => line.push_str(&format!("  {label} {rpm} RPM")),
+        }
+    }
+    line
 }
 
 fn read(path: &str) -> Option<String> {
@@ -474,6 +843,61 @@ impl fmt::Display for Status {
                 "  zombie {} ({}), not reaped by its parent {}",
                 zombie.pid, zombie.name, zombie.parent
             )?;
+        }
+
+        if !self.disk_io.is_empty() || !self.network.is_empty() {
+            writeln!(f, "\nI/O per second")?;
+            for rate in &self.disk_io {
+                writeln!(
+                    f,
+                    "  {:<20} read {:>10}  written {:>10}",
+                    rate.name,
+                    human_size(rate.first),
+                    human_size(rate.second)
+                )?;
+            }
+            // Idle interfaces (bridges, veths) would bury the busy ones; --json has all.
+            let (busy, idle): (Vec<&Rate>, Vec<&Rate>) = self
+                .network
+                .iter()
+                .partition(|rate| rate.first + rate.second > 0);
+            for rate in busy {
+                writeln!(
+                    f,
+                    "  {:<20} in   {:>10}  out     {:>10}",
+                    rate.name,
+                    human_size(rate.first),
+                    human_size(rate.second)
+                )?;
+            }
+            if !idle.is_empty() {
+                writeln!(f, "  {} idle network interfaces not shown", idle.len())?;
+            }
+        }
+        if !self.sensors.is_empty() {
+            writeln!(f, "\nSensors")?;
+            for sensor in &self.sensors {
+                writeln!(f, "{}", sensor_line(sensor))?;
+            }
+        }
+        for battery in &self.batteries {
+            writeln!(f, "\nBattery")?;
+            write!(f, "  {}", battery.name)?;
+            if let Some(charge) = battery.charge {
+                write!(f, " {charge}%")?;
+            }
+            if let Some(status) = &battery.status {
+                write!(f, ", {}", status.to_lowercase())?;
+            }
+            if let Some(health) = battery.health {
+                write!(f, ", holds {health:.0}% of its design charge")?;
+            }
+            writeln!(f)?;
+        }
+
+        writeln!(f, "\nHealth {}/100", self.health.score)?;
+        for reason in &self.health.reasons {
+            writeln!(f, "  {}: {}", reason.points, reason.why)?;
         }
         Ok(())
     }
