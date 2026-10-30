@@ -1,6 +1,6 @@
 # 006: `molt clean`
 
-Status: Draft
+Status: Accepted
 Prefix: CN
 
 ## Goal
@@ -30,14 +30,14 @@ Prefix: CN
 - **CN-03** A rule whose `processes` (P-08) include a running program is left out, and the preview names the rule and the program. Running programs are read from `/proc/*/comm` and `/proc/*/cmdline` (the executable's base name).
 
 ### Preview and consent
-- **CN-04** The live run prints the full preview before the first change: every rule, its size, its mode, and the command it would run (P-14). With `--json`, the preview is a JSON object on stdout before the result.
+- **CN-04** The live run prints the full preview before the first change: every rule, its size, its mode (rules going to the trash say so), and the command it would run (P-14). With `--json`, the preview is a JSON object on stdout before the result.
 - **CN-05** Interactive runs ask once, default no. Anything but `y` or `yes` changes nothing, and molt exits 0 with "Nothing changed." A run without a terminal on stdin needs `--yes`; without it, molt prints the preview and exits 1 with nothing changed.
 - **CN-06** The locked-folder consent (LF-05) is a second question, after the first yes, default no. Non-interactive runs need `--fix-permissions`. Without consent, locked folders are kept (LF-01).
 - **CN-07** `--dry-run` (or a dry run from the config or `MOLT_DRY_RUN`, with the CL-06 notice) prints the preview and stops, changing nothing.
 
 ### Acting
 - **CN-08** A rule with `clean_with` runs that command, with no shell, `$PATH` limited to its absolute entries (SC-10), stdin closed, and its output shown. molt never also deletes that rule's files. If the command fails (non-zero exit, or it can't start), the rule is reported as failed and its files are left alone (P-02). Its freed size is measured as the rule's size before minus after.
-- **CN-09** Every other rule's candidates go through one live safe-delete plan per mode, with the identity recorded by the preview's scan, so anything that changed since the preview is skipped (SD-08, SD-10).
+- **CN-09** Owning-tool commands run first. Every other rule's candidates go through one live safe-delete plan per mode, with the identity recorded by the preview's scan, so anything that changed since the preview is skipped (SD-08, SD-10).
 - **CN-10** `--permanent` and `--trash` override the mode of every rule in the run (000 Decisions). They conflict with each other (exit 2).
 
 ### Reporting
@@ -52,8 +52,8 @@ Prefix: CN
 - CN-08: fake tools on a temp `$PATH`, one that succeeds and one that fails.
 - P-05: `clean --dry-run` and `clean` answered "no" leave a snapshot of the temp home unchanged.
 
-## Open questions
+## Decisions
 
-- **Picking rules.** Is `--only` / `--skip` plus one yes/no enough until the phase 5 menu, or do you want a per-rule yes/no now? (Proposal: flags plus one question. Per-rule questions get tedious with 20 rules, and `--only` covers "just this one".)
-- **When the owning tool fails.** CN-08 reports it and leaves the files. Should molt instead fall back to deleting the files itself? (Proposal: no. A failing tool may mean the data is in use, and P-02 says skip and report.)
-- **Non-interactive without `--yes`.** Exit 1 after the preview, as CN-05 says, or exit 2 (usage)? (Proposal: 1. The command was valid; it just wasn't allowed to act.)
+- **Flags plus one question** (CN-02, CN-05) until the phase 5 menu.
+- **A failing owning tool is reported, never worked around** (CN-08, P-02).
+- **No terminal and no `--yes`: preview, change nothing, exit 1** (CN-05).
