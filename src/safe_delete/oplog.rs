@@ -14,7 +14,7 @@ pub(super) struct OpLog(File);
 #[derive(Serialize)]
 struct Entry<'a> {
     time: String,
-    mode: &'static str,
+    mode: Mode,
     path: &'a str,
     bytes: u64,
     outcome: &'static str,
@@ -50,10 +50,7 @@ impl OpLog {
         };
         let entry = Entry {
             time: jiff::Timestamp::now().to_string(),
-            mode: match mode {
-                Mode::Permanent => "permanent",
-                Mode::Trash => "trash",
-            },
+            mode,
             // SD-04 refuses non-UTF-8 paths before anything is changed.
             path: &path.to_string_lossy(),
             bytes,

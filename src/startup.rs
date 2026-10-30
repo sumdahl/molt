@@ -5,7 +5,7 @@ use std::ffi::OsString;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use crate::config::{self, Config, ConfigError, Decision, Requested};
+use crate::config::{self, Config, ConfigError, Decision, DryRunCause, Requested};
 use crate::rules::{self, Dirs, LoadError, Rule};
 use crate::safe_delete::{Context, Uid};
 
@@ -20,6 +20,8 @@ pub struct Environment {
     pub oplog: Option<PathBuf>,
     /// `MOLT_DRY_RUN`, checked by `Config::decide` (CF-07).
     pub dry_run: Option<OsString>,
+    /// Absolute `$PATH` entries, where rules look for their tools (SC-10).
+    pub search_path: Vec<PathBuf>,
     pub euid: Uid,
 }
 
@@ -78,6 +80,13 @@ pub fn environment(
         dirs,
         oplog,
         dry_run: var("MOLT_DRY_RUN"),
+        search_path: var("PATH")
+            .map(|path| {
+                std::env::split_paths(&path)
+                    .filter(|dir| dir.is_absolute())
+                    .collect()
+            })
+            .unwrap_or_default(),
         euid,
     })
 }
@@ -136,6 +145,17 @@ impl Environment {
             euid: self.euid,
         }
     }
+}
+
+/// CL-06: what a command that changes files says when the config or the environment made
+/// its run a dry run. `None` when the user asked for it, or the run is live.
+pub fn dry_run_notice(decision: Decision) -> Option<String> {
+    let source = match decision {
+        Decision::DryRun(DryRunCause::Environment) => "MOLT_DRY_RUN=1",
+        Decision::DryRun(DryRunCause::Config) => "dry_run = true in the config",
+        Decision::DryRun(DryRunCause::Flag) | Decision::Live => return None,
+    };
+    Some(format!("dry run because of {source}; pass --live to act"))
 }
 
 impl From<ConfigError> for StartupError {

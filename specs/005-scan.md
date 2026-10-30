@@ -1,6 +1,6 @@
 # 005: `molt scan`
 
-Status: Accepted
+Status: Implemented
 Prefix: SC
 
 ## Goal

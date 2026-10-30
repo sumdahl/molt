@@ -86,7 +86,8 @@ pub enum Execution {
 }
 
 /// What happens to a candidate. The default per kind of data is the rule's choice (000).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Mode {
     Permanent,
     /// SD-11: move to the FreeDesktop trash.
@@ -136,6 +137,21 @@ pub enum Reason {
     NoTrash,
     /// SD-15: an earlier operation-log write failed, so the plan stopped.
     LogFailed,
+}
+
+impl fmt::Display for Reason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Protected => "protected",
+            Self::Whitelisted => "whitelisted",
+            Self::InvalidPath => "invalid-path",
+            Self::MountPoint => "mount-point",
+            Self::ChangedSinceScan => "changed-since-scan",
+            Self::ModifiedSinceScan => "modified-since-scan",
+            Self::NoTrash => "no-trash",
+            Self::LogFailed => "log-failed",
+        })
+    }
 }
 
 /// What happened to one candidate. `bytes` are on-disk bytes freed, or for the trash, freed
