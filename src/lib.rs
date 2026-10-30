@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 //! molt: reclaim disk space on Linux, safely.
 
+pub mod analyze;
 pub mod clean;
 pub mod config;
 pub mod installer;

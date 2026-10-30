@@ -311,7 +311,7 @@ fn sd_06_symlinks_inside_a_directory_are_removed_as_links() {
 }
 
 /// Creates `at` and mounts a fresh tmpfs on it. Only call inside `in_mount_namespace`.
-fn mount_tmpfs(at: &Path) {
+pub(crate) fn mount_tmpfs(at: &Path) {
     fs::create_dir(at).unwrap();
     let status = Command::new("mount")
         .args(["-t", "tmpfs", "tmpfs"])
@@ -324,7 +324,7 @@ fn mount_tmpfs(at: &Path) {
 /// Runs `body` in a private user and mount namespace so the test can mount a tmpfs
 /// without root. Locally it skips (with a note) where unprivileged user namespaces are
 /// disabled; on CI it fails instead.
-fn in_mount_namespace(filter: &str, body: impl FnOnce()) {
+pub(crate) fn in_mount_namespace(filter: &str, body: impl FnOnce()) {
     if std::env::var_os("MOLT_TEST_IN_NS").is_some() {
         return body();
     }
