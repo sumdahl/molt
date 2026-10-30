@@ -4,7 +4,7 @@ Reclaim disk space on Linux, safely.
 
 molt finds what is filling your disk (caches, build artifacts, old packages, installers, leftovers from removed apps), shows you exactly what it would remove, and removes only what it can prove is safe to remove. It works on any Linux distribution. Distro-specific steps turn on only where their tools are installed; pacman is the first, with apt, dnf, zypper, Flatpak and Snap planned.
 
-> **Status: v0.1.0, early.** `molt scan`, `molt clean`, `molt purge`, `molt installer`, `molt uninstall`, `molt system`, `molt optimize`, `molt analyze` and `molt status` work. Other commands are being built spec-first.
+> **Status: v0.1.0, early.** `molt scan`, `molt clean`, `molt purge`, `molt installer`, `molt uninstall`, `molt system`, `molt optimize`, `molt history`, `molt analyze` and `molt status` work. Other commands are being built spec-first.
 
 ## Commands
 
@@ -92,11 +92,15 @@ molt optimize --dry-run            # what nothing needs any more
 molt optimize --only pacman-orphans
 ```
 
+`molt history` shows what molt has done, newest first: each item it trashed or deleted, and each command it ran, with sizes, from its operation log. It only reads. `--limit N` (default 50), `--all`, `--since YYYY-MM-DD`, `--json`.
+
+```sh
+molt history --since 2026-10-01    # this month's removals
+```
+
 ### Planned
 
-| Command | What it does |
-|---|---|
-| `molt history` | Show what molt has removed |
+Shell completions, an interactive `molt` menu, self-update, and AUR, `.deb` and `cargo install` packages. See the Phase 5 milestone on GitHub.
 
 ## Options and configuration
 

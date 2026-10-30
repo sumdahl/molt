@@ -1,6 +1,6 @@
 # 017: `molt history`
 
-Status: Accepted (#58)
+Status: Implemented
 Prefix: HI
 
 ## Goal

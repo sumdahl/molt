@@ -67,6 +67,8 @@ enum Command {
     /// Remove packages nothing needs (orphans, autoremove) through each package manager,
     /// run with sudo: preview first, then ask.
     Optimize(OptimizeArgs),
+    /// Show what molt has removed and run, newest first. Changes nothing.
+    History(HistoryArgs),
 }
 
 #[derive(Clone, Args)]
@@ -156,6 +158,29 @@ struct OptimizeArgs {
 }
 
 #[derive(Clone, Args)]
+struct HistoryArgs {
+    /// Show at most this many entries.
+    #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u32).range(1..))]
+    limit: u32,
+    /// Show every entry.
+    #[arg(long, conflicts_with = "limit")]
+    all: bool,
+    /// Only entries from this day on (YYYY-MM-DD, local time).
+    #[arg(long, value_name = "DATE", value_parser = since_date)]
+    since: Option<jiff::Timestamp>,
+}
+
+/// HI-04: local midnight at the start of `date`.
+fn since_date(date: &str) -> Result<jiff::Timestamp, String> {
+    let day: jiff::civil::Date = date
+        .parse()
+        .map_err(|_| format!("{date:?} isn't a date like 2026-10-30"))?;
+    day.to_zoned(jiff::tz::TimeZone::system())
+        .map(|midnight| midnight.timestamp())
+        .map_err(|error| error.to_string())
+}
+
+#[derive(Clone, Args)]
 struct CleanArgs {
     /// Clean only these rules (ids as in `molt scan --json`).
     #[arg(long, num_args = 1.., value_name = "ID")]
@@ -240,6 +265,8 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         Some(Command::Uninstall(args)) => run_uninstall(cli, args, &startup),
         Some(Command::System(args)) => run_system(cli, args, &startup),
         Some(Command::Optimize(args)) => run_optimize(cli, args, &startup),
+        // HI-01: read-only, so a dry run is the same run.
+        Some(Command::History(args)) => run_history(cli, args, &startup),
         // AN-09: read-only, so a dry run is the same run.
         Some(Command::Analyze(args)) => run_analyze(cli, args, &startup),
         // ST-01, ST-08: read-only, and always 0.
@@ -633,6 +660,35 @@ fn run_system(
         print!("{result}");
     }
     Ok(ExitCode::from(result.exit_code()))
+}
+
+/// HI-01 to HI-07: the operation log, newest first.
+fn run_history(
+    cli: &Cli,
+    args: &HistoryArgs,
+    startup: &Startup,
+) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    // The path the log is written to, even when MOLT_NO_OPLOG stops new entries.
+    let log = startup.env.dirs.state.join("molt/operations.log");
+    let Some(history) = molt::history::read(&log)? else {
+        if cli.json {
+            println!(
+                "{}",
+                serde_json::json!({ "entries": [], "skipped_lines": 0, "left_out": 0 })
+            );
+        } else {
+            println!("Nothing in the history yet.");
+        }
+        return Ok(ExitCode::SUCCESS);
+    };
+    let limit = (!args.all).then_some(args.limit as usize);
+    let shown = history.select(args.since, limit);
+    if cli.json {
+        println!("{}", serde_json::to_string(&shown)?);
+    } else {
+        print!("{shown}");
+    }
+    Ok(ExitCode::from(shown.exit_code()))
 }
 
 /// OP-01 to OP-08: like `molt system`, the preview, one question, then each command
