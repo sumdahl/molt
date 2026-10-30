@@ -57,6 +57,6 @@ What this spec deliberately leaves out.
 | 006 | [`molt clean`](006-clean.md) | CN | Implemented |
 | 007 | [`molt system`](007-system.md) | SY | Implemented |
 | 008 | [`molt purge`](008-purge.md) | PG | Implemented |
-| 009 | [`molt installer`](009-installer.md) | IN | Draft |
+| 009 | [`molt installer`](009-installer.md) | IN | Accepted |
 | 010 | [Built-in rules](010-built-in-rules.md) | BR | Implemented |
 | 011 | [Locked folders](011-locked-folders.md) | LF | Implemented |
