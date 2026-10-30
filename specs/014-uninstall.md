@@ -27,7 +27,7 @@ The first one found on the absolute `$PATH` entries (SC-10) that owns the app is
 
 | Manager | Found by | Owns `N` when | Preview (no sudo) | Live command |
 |---|---|---|---|---|
-| pacman (and AUR helpers' packages) | `pacman` | `pacman -Qq N` or `pacman -Qqo <N on $PATH>` names it | `pacman -Rns --print <pkg>` | `pacman -Rns <pkg>` |
+| pacman (and AUR helpers' packages) | `pacman` | `pacman -Qq N` or `pacman -Qqo <N on $PATH>` names it | `pacman -Rs --print <pkg>` (`-n` and `--print` conflict; `-n` only changes saved config files) | `pacman -Rns <pkg>` |
 | apt | `dpkg-query`, `apt-get` | `dpkg-query -W N` shows it installed, or `dpkg-query -S <N on $PATH>` names it | `apt-get -s remove <pkg>` | `apt-get remove <pkg>` |
 | dnf | `rpm`, `dnf` | `rpm -q N`, or `rpm -qf <N on $PATH>` names it | `rpm -q <pkg>` | `dnf remove <pkg>` |
 | zypper | `rpm`, `zypper` | as dnf | `rpm -q <pkg>` | `zypper remove <pkg>` |
