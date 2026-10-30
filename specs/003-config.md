@@ -1,6 +1,6 @@
 # 003: Config and whitelist
 
-Status: Draft
+Status: Accepted
 Prefix: CF
 
 ## Goal
@@ -54,8 +54,5 @@ A **config path** is `~/…` or an absolute path, with no `*`, `?`, `.` or `..` 
 ## Decisions
 
 - **Dry run by default is a setting** (CF-07), agreed with the maintainer.
-
-## Open questions
-
-- **Default for new users.** Should a fresh install with no config default to `dry_run = true`, so molt never changes anything until the user passes `--live` or sets `dry_run = false`? (Proposal: no. Every mutating command already previews and asks for confirmation (P-06), and `--yes` is needed when it can't ask. A default that never acts would surprise everyone used to `clean` meaning clean.)
-- **Globs in the whitelist.** Allow `~/work/*/keep`? (Proposal: no. Literal paths are easy to check; a whitelist entry already protects everything below it.)
+- **Fresh installs act normally** (`dry_run = false` without a config). Mutating commands still preview and ask for confirmation (P-06), and need `--yes` when they can't ask.
+- **The whitelist takes literal paths only.** An entry already protects everything below it (SD-03).
