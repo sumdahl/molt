@@ -998,3 +998,116 @@ fn sy_01_sy_02_unknown_ids_are_refused_and_relative_path_entries_ignored() {
         serde_json::json!(["pacman-cache", "journal", "coredumps"])
     );
 }
+
+const PURGE_CONFIG: &str = "purge_paths = [\"~/projects\"]\n";
+
+/// Makes `rel` a month old, so its project isn't recent (PG-04).
+fn backdate(home: &Home, rel: &str) {
+    let month = std::time::Duration::from_secs(30 * 24 * 3600);
+    fs::File::open(home.path.join(rel))
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() - month)
+        .unwrap();
+}
+
+/// An old Cargo project with a build, a `target` with no `Cargo.toml`, and a Cargo
+/// project changed just now.
+fn purge_home() -> (Home, PathBuf, PathBuf, PathBuf) {
+    let home = Home::new();
+    home.config(PURGE_CONFIG);
+    home.file("projects/app/Cargo.toml", 10);
+    backdate(&home, "projects/app/Cargo.toml");
+    let built = home.file("projects/app/target/debug/app", 64 * 1024);
+    let loose = home.file("projects/loose/target/keep", 4096);
+    home.file("projects/fresh/Cargo.toml", 10);
+    let fresh = home.file("projects/fresh/target/keep", 4096);
+    (home, built, loose, fresh)
+}
+
+#[test]
+fn pg_01_without_purge_paths_there_is_nothing_to_do() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.file("projects/app/Cargo.toml", 10);
+    home.file("projects/app/target/x", 4096);
+
+    let out = home.molt(&["purge", "--yes"], &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stderr(&out).contains("purge_paths"), "{}", stderr(&out));
+    assert!(exists(&home.path.join("projects/app/target/x")));
+}
+
+#[test]
+fn pg_07_p_05_dry_run_and_no_change_nothing() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let (home, ..) = purge_home();
+    let before = snapshot(&home.path);
+
+    let dry = home.molt(&["purge", "--dry-run"], &[]);
+    assert!(dry.status.success(), "{}", stderr(&dry));
+    assert!(
+        stdout(&dry).contains("Cargo target folders"),
+        "{}",
+        stdout(&dry)
+    );
+    assert!(
+        stdout(&dry).contains("with `molt purge`"),
+        "{}",
+        stdout(&dry)
+    );
+    assert!(
+        stdout(&dry).contains("Left out 1 build folders: changed in the last 7 days"),
+        "{}",
+        stdout(&dry)
+    );
+    assert_eq!(snapshot(&home.path), before);
+
+    let piped = home.molt(&["purge"], &[]);
+    assert_eq!(piped.status.code(), Some(1), "no terminal needs --yes");
+    assert_eq!(snapshot(&home.path), before);
+}
+
+#[test]
+fn pg_02_pg_04_pg_07_yes_removes_only_old_builds_next_to_their_marker() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let (home, built, loose, fresh) = purge_home();
+
+    let out = home.molt(&["purge", "--yes"], &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(!exists(&home.path.join("projects/app/target")));
+    assert!(exists(&home.path.join("projects/app/Cargo.toml")));
+    assert!(!exists(&built));
+    assert!(exists(&loose), "no Cargo.toml next to it");
+    assert!(exists(&fresh), "changed in the last 7 days");
+    assert!(stdout(&out).contains("Freed"), "{}", stdout(&out));
+    // CN-12
+    let log = fs::read_to_string(home.path.join(".local/state/molt/operations.log")).unwrap();
+    assert!(log.contains("projects/app/target"), "{log}");
+}
+
+#[test]
+fn pg_08_kinds_are_picked_and_unknown_kinds_refused() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let (home, built, ..) = purge_home();
+
+    let typo = home.molt(&["purge", "--only", "rust", "--yes"], &[]);
+    assert_eq!(typo.status.code(), Some(2));
+    let other = home.molt(&["purge", "--only", "node", "--yes"], &[]);
+    assert!(other.status.success(), "{}", stderr(&other));
+    assert!(exists(&built));
+
+    let trashed = home.molt(&["purge", "--trash", "--yes"], &[]);
+    assert!(trashed.status.success(), "{}", stderr(&trashed));
+    assert!(!exists(&built));
+    assert!(exists(
+        &home.path.join(".local/share/Trash/files/target/debug/app")
+    ));
+}

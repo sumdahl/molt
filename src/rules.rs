@@ -205,6 +205,10 @@ pub enum SkipReason {
     Symlink,
     /// RE-09: a directory on the way couldn't be listed.
     Unreadable(Errno),
+    /// PG-04: a project being worked on.
+    RecentlyChanged,
+    /// PG-05: a build folder that may hold Git-tracked files.
+    GitTracked,
 }
 
 impl fmt::Display for SkipReason {
@@ -212,6 +216,8 @@ impl fmt::Display for SkipReason {
         match self {
             Self::Symlink => f.write_str("symlink"),
             Self::Unreadable(errno) => write!(f, "unreadable: {errno}"),
+            Self::RecentlyChanged => f.write_str("changed-in-the-last-7-days"),
+            Self::GitTracked => f.write_str("git-tracked"),
         }
     }
 }
@@ -414,6 +420,14 @@ fn glob_match(pattern: &str, name: &str) -> bool {
 impl fmt::Display for RuleId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
+    }
+}
+
+impl RuleId {
+    /// An id molt itself defines. `id` must be a literal that satisfies RE-03; each
+    /// caller's ids have a test that checks it.
+    pub(crate) fn builtin(id: &'static str) -> Self {
+        Self(id.to_owned())
     }
 }
 
