@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::SystemTime;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use molt::analyze;
 use molt::clean::{self, Busy};
 use molt::config::{Decision, Requested};
@@ -195,8 +195,17 @@ impl Cli {
 }
 
 fn main() -> ExitCode {
+    // BN-02: the banner tops the main help on a terminal.
+    let mut command = Cli::command();
+    if let Some(banner) = molt::banner::for_terminal() {
+        // clap puts its own blank line after it.
+        command = command.before_help(banner.trim_end().to_owned());
+    }
     // P-13: clap exits 2 on bad usage, and 0 for --help and --version.
-    let cli = Cli::parse();
+    let cli = match Cli::from_arg_matches(&command.get_matches()) {
+        Ok(cli) => cli,
+        Err(error) => error.exit(),
+    };
     match run(&cli) {
         Ok(code) => code,
         Err(error) => {
@@ -211,6 +220,12 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    // BN-02, BN-03: a bare `molt` only, never above a named command or JSON.
+    if cli.command.is_none() && !cli.json {
+        if let Some(banner) = molt::banner::for_terminal() {
+            print!("{banner}");
+        }
+    }
     let startup = startup::start(
         cli.requested(),
         |name| std::env::var_os(name),

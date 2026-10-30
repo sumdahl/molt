@@ -64,4 +64,4 @@ What this spec deliberately leaves out.
 | 013 | [`molt status`](013-status.md) | ST | Implemented |
 | 014 | [`molt uninstall`](014-uninstall.md) | UN | Implemented |
 | 015 | [`molt optimize`](015-optimize.md) | OP | Implemented |
-| 016 | [The molt banner](016-banner.md) | BN | Accepted |
+| 016 | [The molt banner](016-banner.md) | BN | Implemented |

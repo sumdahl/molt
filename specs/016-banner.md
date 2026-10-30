@@ -1,6 +1,6 @@
 # 016: The molt banner
 
-Status: Accepted (#52)
+Status: Implemented
 Prefix: BN
 
 ## Goal

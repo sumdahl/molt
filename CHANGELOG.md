@@ -14,6 +14,8 @@ The release workflow publishes the section matching the pushed tag as the GitHub
 
 - `molt optimize`: packages nothing needs, through each manager's own command: pacman orphans (`-Qdtq`, removed with `-Rns` naming exactly the listed packages), `apt-get autoremove`, `dnf` and `zypper` unneeded packages. Queries run without root; the preview lists every package and the exact `sudo` command; the manager still asks for itself. Then upkeep: `fstrim --all` through `sudo`, `fc-cache` as you without `sudo`, and `resolvectl flush-caches` through `sudo` when systemd-resolved is running (its cache size in the preview). Last, read-only checks that never use `sudo`: failed systemd units (system and user) with where to look, and each real disk's SMART health (passed, FAILING, needs root, or no data). `--only`/`--skip`, `--json`, logged. Spec: `specs/015-optimize.md`.
 
+- A green ASCII-art molt banner at the top of `molt --help` and a bare `molt`, on a terminal only. Never when piped, with `--json`, with `--version`, or above a named command. `NO_COLOR` or `TERM=dumb` prints it plain. Spec: `specs/016-banner.md`.
+
 ### Changed
 - Releases are signed: the release workflow builds only from a tag signed with a maintainer's SSH key, listed in `.github/allowed_signers`. Check a tag with `git -c gpg.ssh.allowedSignersFile=.github/allowed_signers verify-tag vX.Y.Z`.
 
