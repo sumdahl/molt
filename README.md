@@ -2,9 +2,9 @@
 
 Reclaim disk space on Linux, safely.
 
-molt finds what is filling your disk (caches, build artifacts, old packages, installers, leftovers from removed apps), shows you exactly what it would remove, and removes only what it can prove is safe to remove. It works on any Linux distribution, with extra rules for pacman, apt, dnf, zypper, flatpak and snap.
+molt finds what is filling your disk (caches, build artifacts, old packages, installers, leftovers from removed apps), shows you exactly what it would remove, and removes only what it can prove is safe to remove. It works on any Linux distribution. Distro-specific steps turn on only where their tools are installed; pacman is the first, with apt, dnf, zypper, Flatpak and Snap planned.
 
-> **Status: pre-release.** `molt scan`, `molt clean`, `molt purge`, `molt installer` and `molt system` work. Other commands are being built spec-first.
+> **Status: v0.1.0, early.** `molt scan`, `molt clean`, `molt purge`, `molt installer` and `molt system` work. Other commands are being built spec-first.
 
 ## Commands
 
@@ -114,12 +114,12 @@ See [`specs/000-principles.md`](specs/000-principles.md) for the full set of rul
 
 ## Install
 
-Download the latest release from the [Releases page](https://github.com/sumdahl/molt/releases), then:
+Download v0.1.0, the latest release, from the [Releases page](https://github.com/sumdahl/molt/releases), then:
 
 ```sh
-tar xzf molt-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz
-sha256sum -c molt-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz.sha256
-install -Dm755 molt-vX.Y.Z-x86_64-unknown-linux-musl/molt ~/.local/bin/molt
+tar xzf molt-v0.1.0-x86_64-unknown-linux-musl.tar.gz
+sha256sum -c molt-v0.1.0-x86_64-unknown-linux-musl.tar.gz.sha256
+install -Dm755 molt-v0.1.0-x86_64-unknown-linux-musl/molt ~/.local/bin/molt
 ```
 
 From source:

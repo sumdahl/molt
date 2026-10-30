@@ -6,6 +6,8 @@ The release workflow publishes the section matching the pushed tag as the GitHub
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-30
+
 ### Added
 - Project foundation: principles spec (`specs/000`), safe-delete spec (`specs/001`), agent guide (`AGENTS.md`).
 - `molt --version` / `molt --help`, smoke tests, CI, and tag-driven release workflow.
@@ -21,6 +23,3 @@ The release workflow publishes the section matching the pushed tag as the GitHub
 - `molt purge`: removes project build folders (Cargo, Node, Python venvs, Gradle, Maven, Next.js, Zig) under `purge_paths`, only next to their project file, never in projects changed in the last 7 days or holding Git-tracked files. Same preview, question and safe delete as `clean`; `--only`/`--skip` pick kinds, `--trash` sets them aside. Spec: `specs/008-purge.md`.
 - `molt installer`: moves old installers (`.deb`, `.rpm`, `.pkg.tar.*`, `.AppImage`, `.iso`, `.run`) in `~/Downloads` and `~/Desktop` to the trash, leaving files from the last 14 days, folders and symlinks. `--permanent` deletes instead; `--only`/`--skip` pick rules. `scan` and `clean` never include them. Spec: `specs/009-installer.md`.
 - `molt system`: the pacman cache, the systemd journal and old coredumps, cleaned by `paccache`, `journalctl` and `systemd-tmpfiles` through `sudo`. It previews each task without `sudo` first, shows the exact commands, and asks once. `--only`/`--skip` pick tasks; every command is logged. Spec: `specs/007-system.md`.
-
-### Fixed
-- `molt scan` showed a rule as `0 B` with no hint when something inside couldn't be measured. The rule's line now says how many items failed, and the scan is marked partial.
