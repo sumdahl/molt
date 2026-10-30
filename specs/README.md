@@ -65,4 +65,4 @@ What this spec deliberately leaves out.
 | 014 | [`molt uninstall`](014-uninstall.md) | UN | Implemented |
 | 015 | [`molt optimize`](015-optimize.md) | OP | Implemented |
 | 016 | [The molt banner](016-banner.md) | BN | Implemented |
-| 017 | [`molt history`](017-history.md) | HI | Draft |
+| 017 | [`molt history`](017-history.md) | HI | Accepted |

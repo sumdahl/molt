@@ -1,6 +1,6 @@
 # 017: `molt history`
 
-Status: Draft (#58)
+Status: Accepted (#58)
 Prefix: HI
 
 ## Goal
