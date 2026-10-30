@@ -2655,3 +2655,328 @@ fn mn_03_mn_04_p_05_a_picked_command_runs_as_typed_and_comes_back() {
     assert!(screen.contains("App to uninstall"), "{screen}");
     assert_eq!(snapshot(&home.path), before);
 }
+
+/// A signed fake release `v9.9.9` for `molt update`, built with a test key, real `tar`,
+/// `sha256sum` and `ssh-keygen`, and served by a fake `curl`. `pack` fills the release's
+/// top folder before the default `molt` (if it made none), packing and signing; `tamper` changes the release after. `None`
+/// where those tools aren't installed.
+struct FakeRelease {
+    dir: TempDir,
+}
+
+const FAKE_TAG: &str = "v9.9.9";
+
+impl FakeRelease {
+    fn good() -> Option<Self> {
+        Self::new(|_| {}, |_, _| {})
+    }
+
+    fn new(pack: impl Fn(&Path), tamper: impl Fn(&Path, &str)) -> Option<Self> {
+        let tools = ["tar", "sha256sum", "ssh-keygen"];
+        if !tools
+            .iter()
+            .all(|tool| Path::new("/usr/bin").join(tool).exists())
+        {
+            return None;
+        }
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+        let run = |program: &str, args: &[&str]| {
+            let out = Command::new(program)
+                .args(args)
+                .current_dir(root)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{program}: {}", stderr(&out));
+            out
+        };
+        run(
+            "ssh-keygen",
+            &["-q", "-t", "ed25519", "-N", "", "-f", "key"],
+        );
+        let public = fs::read_to_string(root.join("key.pub")).unwrap();
+        fs::write(
+            root.join("signers"),
+            format!("tester namespaces=\"molt-release\" {public}"),
+        )
+        .unwrap();
+
+        let top = format!("molt-{FAKE_TAG}-x86_64-unknown-linux-musl");
+        let release = root.join("release");
+        fs::create_dir_all(release.join(&top)).unwrap();
+        pack(&release.join(&top));
+        let new = release.join(&top).join("molt");
+        if !exists(&new) {
+            fs::write(&new, "#!/bin/sh\necho 'molt 9.9.9'\n").unwrap();
+            fs::set_permissions(&new, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        fs::write(release.join(&top).join("README.md"), "readme").unwrap();
+        let tarball = format!("{top}.tar.gz");
+        let in_release = |args: &[&str]| {
+            let out = Command::new(args[0])
+                .args(&args[1..])
+                .current_dir(&release)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{args:?}: {}", stderr(&out));
+            out
+        };
+        in_release(&["tar", "czf", &tarball, &top]);
+        let sum = in_release(&["sha256sum", &tarball]);
+        fs::write(release.join(format!("{tarball}.sha256")), &sum.stdout).unwrap();
+        let key = root.join("key");
+        in_release(&[
+            "ssh-keygen",
+            "-q",
+            "-Y",
+            "sign",
+            "-f",
+            key.to_str().unwrap(),
+            "-n",
+            "molt-release",
+            &format!("{tarball}.sha256"),
+        ]);
+        tamper(&release, &tarball);
+
+        let bin = root.join("bin");
+        fs::create_dir(&bin).unwrap();
+        let curl = format!(
+            "#!/bin/sh\nout=''; url=''; head=0\n\
+             while [ $# -gt 0 ]; do case \"$1\" in\n\
+             --head) head=1 ;;\n\
+             --output) out=\"$2\"; shift ;;\n\
+             --write-out|--max-filesize|--proto|--proto-redir) shift ;;\n\
+             -*) ;;\n\
+             *) url=\"$1\" ;;\n\
+             esac; shift; done\n\
+             echo \"curl $url\" >> '{ran}'\n\
+             if [ $head = 1 ]; then printf '%s' 'https://github.com/sumdahl/molt/releases/tag/{FAKE_TAG}'; exit 0; fi\n\
+             cp '{release}'/\"$(basename \"$url\")\" \"$out\"\n",
+            ran = root.join("ran").display(),
+            release = release.display(),
+        );
+        fs::write(bin.join("curl"), curl).unwrap();
+        fs::set_permissions(bin.join("curl"), fs::Permissions::from_mode(0o755)).unwrap();
+        Some(Self { dir })
+    }
+
+    fn ran(&self) -> String {
+        fs::read_to_string(self.dir.path().join("ran")).unwrap_or_default()
+    }
+}
+
+/// A copy of molt installed in the temp home's `~/.local/bin`, run with the fake release
+/// on `$PATH` and its test key allowed (SE-09).
+fn installed_molt(home: &Home, release: &FakeRelease, args: &[&str]) -> Output {
+    let copy = home.path.join(".local/bin/molt");
+    if !copy.exists() {
+        fs::create_dir_all(copy.parent().unwrap()).unwrap();
+        fs::copy(env!("CARGO_BIN_EXE_molt"), &copy).unwrap();
+    }
+    let path = format!("{}:/usr/bin", release.dir.path().join("bin").display());
+    let mut command = Command::new(&copy);
+    command
+        .args(args)
+        .env_clear()
+        .env("HOME", &home.path)
+        .env("PATH", path)
+        .env(
+            "MOLT_TEST_ALLOWED_SIGNERS",
+            release.dir.path().join("signers"),
+        )
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = spawn_fresh_copy(&mut command);
+    drop(child.stdin.take());
+    child.wait_with_output().unwrap()
+}
+
+#[test]
+fn se_01_se_02_se_03_p_05_a_dry_run_checks_everything_and_changes_nothing() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let Some(release) = FakeRelease::good() else {
+        return eprintln!("skipped: tar, sha256sum or ssh-keygen isn't installed");
+    };
+    let home = Home::new();
+    installed_molt(&home, &release, &["--version"]);
+    let before = snapshot(&home.path);
+
+    let out = installed_molt(&home, &release, &["update", "--dry-run"]);
+    assert!(out.status.success(), "{}\n{}", stdout(&out), stderr(&out));
+    let text = stdout(&out);
+    assert!(text.contains("-> 9.9.9"), "{text}");
+    assert_eq!(
+        text.matches("  ok     ").count(),
+        7,
+        "every check passed: {text}"
+    );
+    assert!(text.contains("would replace"), "{text}");
+    assert_eq!(snapshot(&home.path), before);
+    assert!(
+        release
+            .ran()
+            .lines()
+            .all(|line| line.starts_with("curl https://github.com/sumdahl/molt/releases/")),
+        "{}",
+        release.ran()
+    );
+}
+
+#[test]
+fn se_05_se_06_yes_swaps_in_the_new_molt_and_trashes_the_old_one() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let Some(release) = FakeRelease::good() else {
+        return eprintln!("skipped: tar, sha256sum or ssh-keygen isn't installed");
+    };
+    let home = Home::new();
+    let out = installed_molt(&home, &release, &["update", "--yes"]);
+    assert!(out.status.success(), "{}\n{}", stdout(&out), stderr(&out));
+    assert!(
+        stdout(&out).contains("molt is now 9.9.9"),
+        "{}",
+        stdout(&out)
+    );
+    let copy = home.path.join(".local/bin/molt");
+    assert_eq!(
+        fs::read_to_string(&copy).unwrap(),
+        "#!/bin/sh\necho 'molt 9.9.9'\n"
+    );
+    let trashed: Vec<_> = fs::read_dir(home.path.join(".local/share/Trash/files"))
+        .unwrap()
+        .collect();
+    assert_eq!(trashed.len(), 1, "the old molt");
+    let log = fs::read_to_string(home.path.join(".local/state/molt/operations.log")).unwrap();
+    assert!(log.contains("\"update\",\"--to\",\"9.9.9\""), "{log}");
+    // SE-06: the command and the old binary only; the download folder isn't logged.
+    assert_eq!(log.lines().count(), 2, "{log}");
+    assert!(log.contains("\"outcome\":\"trashed\""), "{log}");
+}
+
+#[test]
+fn se_02_a_tampered_release_is_refused_and_nothing_is_replaced() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    type Pack = &'static dyn Fn(&Path);
+    type Tamper = &'static dyn Fn(&Path, &str);
+    let signed: Tamper = &|_, _| {};
+    let cases: [(&str, Pack, Tamper); 5] = [
+        ("signature", &|_| {}, &|release, tarball| {
+            let sig = release.join(format!("{tarball}.sha256.sig"));
+            fs::write(sig, "not a signature").unwrap();
+        }),
+        ("checksum", &|_| {}, &|release, tarball| {
+            fs::write(release.join(tarball), "swapped").unwrap()
+        }),
+        (
+            "version",
+            &|top| fs::write(top.join("molt"), "#!/bin/sh\necho 'molt 1.0.0'\n").unwrap(),
+            signed,
+        ),
+        (
+            "symlink",
+            &|top| std::os::unix::fs::symlink("/etc/passwd", top.join("link")).unwrap(),
+            signed,
+        ),
+        (
+            "binary is a folder",
+            &|top| fs::create_dir(top.join("molt")).unwrap(),
+            signed,
+        ),
+    ];
+    for (what, pack, tamper) in cases {
+        let Some(release) = FakeRelease::new(pack, tamper) else {
+            return eprintln!("skipped: tar, sha256sum or ssh-keygen isn't installed");
+        };
+        let home = Home::new();
+        installed_molt(&home, &release, &["--version"]);
+        let before = snapshot(&home.path);
+        let out = installed_molt(&home, &release, &["update", "--yes"]);
+        assert_eq!(out.status.code(), Some(1), "{what}: {}", stdout(&out));
+        assert!(stdout(&out).contains("FAILED"), "{what}: {}", stdout(&out));
+        assert_eq!(snapshot(&home.path), before, "{what}");
+    }
+}
+
+#[test]
+fn se_04_a_molt_outside_your_home_is_left_to_its_installer() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let before = snapshot(&home.path);
+    let out = home.molt(&["update", "--yes"], &[]);
+    assert_eq!(out.status.code(), Some(1), "{}", stdout(&out));
+    assert!(
+        stderr(&out).contains("isn't a copy you own in your home"),
+        "{}",
+        stderr(&out)
+    );
+    assert_eq!(snapshot(&home.path), before);
+}
+
+#[test]
+fn se_07_se_08_remove_trashes_molt_and_keeps_the_log() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let Some(release) = FakeRelease::good() else {
+        return eprintln!("skipped: tar, sha256sum or ssh-keygen isn't installed");
+    };
+    let home = Home::new();
+    home.config("dry_run = false");
+    home.file(".cache/molt/x", 10);
+    home.file(".local/state/molt/operations.log", 10);
+    home.file(".local/state/molt/other", 10);
+    home.file(".local/share/bash-completion/completions/molt", 10);
+    installed_molt(&home, &release, &["--version"]);
+    let before = snapshot(&home.path);
+
+    let dry = installed_molt(&home, &release, &["remove", "--dry-run"]);
+    assert!(dry.status.success(), "{}", stderr(&dry));
+    assert_eq!(
+        stdout(&dry).matches("would trash").count(),
+        5,
+        "{}",
+        stdout(&dry)
+    );
+    assert!(
+        stdout(&dry).contains("The operation log stays"),
+        "{}",
+        stdout(&dry)
+    );
+    assert_eq!(snapshot(&home.path), before);
+
+    let out = installed_molt(&home, &release, &["remove", "--yes"]);
+    assert!(out.status.success(), "{}\n{}", stdout(&out), stderr(&out));
+    for gone in [
+        ".local/bin/molt",
+        ".config/molt",
+        ".cache/molt",
+        ".local/state/molt/other",
+        ".local/share/bash-completion/completions/molt",
+    ] {
+        assert!(!exists(&home.path.join(gone)), "{gone}");
+    }
+    assert!(exists(&home.path.join(".local/state/molt/operations.log")));
+}
+
+#[test]
+fn se_07_remove_with_log_takes_the_operation_log_too() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let Some(release) = FakeRelease::good() else {
+        return eprintln!("skipped: tar, sha256sum or ssh-keygen isn't installed");
+    };
+    let home = Home::new();
+    home.file(".local/state/molt/operations.log", 10);
+    let out = installed_molt(&home, &release, &["remove", "--with-log", "--yes"]);
+    assert!(out.status.success(), "{}\n{}", stdout(&out), stderr(&out));
+    assert!(!exists(&home.path.join(".local/state/molt")));
+    assert!(!exists(&home.path.join(".local/bin/molt")));
+}

@@ -80,5 +80,9 @@ Releases are cut from `main` by pushing a tag. `.github/workflows/release.yml` d
    - runs fmt, clippy and the tests,
    - builds a static musl binary and smoke-tests it,
    - publishes a GitHub Release with that changelog section as the notes, plus the tarball and its sha256.
+7. The maintainer signs the checksum, so `molt update` will install the release (specs/020-self.md):
+   `gh release download vX.Y.Z -p '*.sha256'`, then
+   `ssh-keygen -Y sign -f ~/.ssh/id_personal -n molt-release molt-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz.sha256`, then
+   `gh release upload vX.Y.Z molt-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz.sha256.sig`.
 
 Agents prepare the release commit. A human confirms before the tag is pushed. The signing key has a passphrase, so the maintainer signs the tag (or loads the key into `ssh-agent` first).

@@ -24,6 +24,16 @@ thread_local! {
     static BEFORE_UNLOCK: RefCell<Option<Hook>> = const { RefCell::new(None) };
 }
 
+/// The same tripwire for a swap (SE-05): only inside the system temp directory.
+pub(super) fn assert_in_temp(target: &Path) {
+    let temp = fs::canonicalize(std::env::temp_dir()).unwrap();
+    let parent = target.parent().and_then(|p| fs::canonicalize(p).ok());
+    assert!(
+        parent.is_some_and(|p| p.starts_with(&temp) && p != temp),
+        "test tried a swap outside the temp dir: {target:?}"
+    );
+}
+
 /// Tripwire for every plan run in a test build: a live plan may only touch paths inside
 /// the system temp directory. A buggy test then panics instead of deleting real files.
 pub(super) fn assert_sandboxed(plan: &Plan) {
