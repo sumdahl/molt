@@ -1,6 +1,6 @@
 # 007: `onyx system`
 
-Status: Implemented
+Status: Implemented (SY-03, SY-04 amended and SY-12, SY-13 added in #82)
 Prefix: SY
 
 ## Goal
@@ -19,7 +19,7 @@ Prefix: SY
 
 1. Start up (004). Root is still refused (CL-07): the user runs `onyx system`, and onyx runs `sudo` for each command.
 2. **Detect** (P-10): each task is active only when its tools are found on the absolute `$PATH` entries (SC-10), as RE-08 does for rules.
-3. **Preview** (P-14): for each active task, run its read-only preview command, without `sudo`, and show the task, its current size, the preview's summary, and the exact command a live run would run.
+3. **Preview** (P-14): for each active task, run its read-only preview command, without `sudo`, and show the task, its current size, what it would free when that can be known, the preview's output, and the exact command a live run would run.
 4. **Ask** (P-06): one yes/no for the whole list, default no.
 5. **Act**: run each task's command as `sudo -- <command>`, in order, and measure the size after.
 6. **Report** what each task freed, and the total.
@@ -43,8 +43,15 @@ Prefix: SY
 - **SY-02** A task whose tools aren't found is left out and reported as inactive (P-10). A tool is found only on an absolute `$PATH` entry (SC-10), and `sudo` must be found the same way, or every task is inactive.
 
 ### Preview and consent
-- **SY-03** Every run, live or dry, shows the preview first (P-14): each task's name, its current size, its preview's last line of output ("nothing to remove" if it printed none), and the exact live command line, with the absolute `sudo` path in front.
-- **SY-04** Preview commands run without `sudo`, with no shell, stdin closed, and `$PATH` limited to its absolute entries. Their output goes to stderr. A preview that fails or can't start is reported, and its task is still shown with its current size.
+- ~~**SY-03** Every run, live or dry, shows the preview first (P-14): each task's name, its current size, its preview's last line of output ("nothing to remove" if it printed none), and the exact live command line, with the absolute `sudo` path in front.~~ Replaced by the amended SY-03 below (#82): the last line alone hid paccache's first summary, and an unlabelled current size read as space freed.
+- **SY-03** (amended, #82) Every run, live or dry, shows the preview first (P-14): each task's name; its size labelled `now`; what it `would free` (SY-12); every non-empty line its preview printed, stdout then stderr, at most 10 per command with `… N more lines` after ("nothing to remove" if it printed none); and the exact live command line, with the absolute `sudo` path in front.
+- ~~**SY-04** Preview commands run without `sudo`, with no shell, stdin closed, and `$PATH` limited to its absolute entries. Their output goes to stderr. A preview that fails or can't start is reported, and its task is still shown with its current size.~~ Replaced by the amended SY-04 below (#82): echoing the output to stderr printed it twice.
+- **SY-04** (amended, #82) Preview commands run without `sudo`, with no shell, stdin closed, and `$PATH` limited to its absolute entries. Their output is captured and shown only inside the preview (SY-03), never echoed as it runs. A preview that fails or can't start is reported, and its task is still shown with its current size.
+- **SY-12** (#82) `would free` is what the live commands would remove, worked out before anything runs, without `sudo`:
+  - `pacman-cache`: the sum of each preview's `disk space saved: <size>` (paccache's units: B, KiB, MiB, GiB, TiB), and 0 for `no candidate packages found`. If either preview's output says neither, it's `not known`.
+  - `journal`: `about` its current size minus 500 MiB, or 0 when it's under that (`journalctl --vacuum-size` removes whole archived files, so it can free a little less).
+  - `coredumps`: 0 when the folder doesn't exist or is empty, otherwise `not known`, because the system's age rule (not onyx) decides and the dry run lists no sizes.
+- **SY-13** (#82) Below the tasks, the preview gives the total `would free`, as `about` when any part is an estimate, and names the tasks whose share is `not known`. `--json` gives each task's `would_free` as bytes, or `null` when not known, and whether it's an estimate.
 - **SY-05** A dry run (`--dry-run`, the config, or `ONYX_DRY_RUN`, with the CL-06 notice) stops after the preview. It never runs `sudo` and never prompts for a password (P-05).
 - **SY-06** A live run asks once, default no, as CN-05 does: anything but `y` or `yes` changes nothing and exits 0 with "Nothing changed." Without a terminal on stdin it needs `--yes`, or it prints the preview and exits 1.
 
@@ -66,9 +73,13 @@ Prefix: SY
 - SY-08: a fake tool that exits 1 makes its task failed, the next task still runs, and onyx exits 3.
 - Sizes are measured under a root folder the library takes; the binary passes `/`. Unit tests pass a temp root, and a fake tool that removes a file there proves SY-09. Smoke tests use the real root, which is only read, and don't assert sizes.
 
+- SY-12: unit tests parse paccache's `disk space saved` lines in every unit, its "no candidate" line, and unknown output; the journal estimate at, under and over 500 MiB.
+- SY-03, SY-04: the fakes print several lines on stdout and stderr; the preview shows each once, inside the task, and stderr carries none of them.
+
 ## Decisions
 
 - **A separate command.** `sudo` never appears in `clean`.
 - **pacman keeps two versions** of installed packages (`-rk2`) and drops uninstalled ones (`-ruk0`).
 - **The journal is trimmed to 500 MiB.**
+- **Would-free is accepted as drafted** (maintainer, 2026-10-31, #82).
 - **Coredumps follow the system's own age rule** through `systemd-tmpfiles`. onyx decides nothing about them and deletes nothing as root.

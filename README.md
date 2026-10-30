@@ -78,10 +78,10 @@ onyx status                        # one snapshot
 onyx status --watch --interval 5   # live, every 5 seconds
 ```
 
-`onyx system` frees space outside your home through each tool's own command, run with `sudo`: the pacman cache (`paccache -rk2` and `-ruk0`), the systemd journal (`journalctl --vacuum-size=500M`) and coredumps past the system's own age limit (`systemd-tmpfiles --clean`). onyx itself never runs as root. The preview uses each tool's read-only mode without `sudo`, so `onyx system --dry-run` never asks for a password. A task is shown only when its tools are installed.
+`onyx system` frees space outside your home through each tool's own command, run with `sudo`: the pacman cache (`paccache -rk2` and `-ruk0`), the systemd journal (`journalctl --vacuum-size=500M`) and coredumps past the system's own age limit (`systemd-tmpfiles --clean`). onyx itself never runs as root. The preview uses each tool's read-only mode without `sudo`, so `onyx system --dry-run` never asks for a password. Each task shows its size now and what it would free (exact for pacman, an estimate for the journal, not known for coredumps), with a total. A task is shown only when its tools are installed.
 
 ```sh
-onyx system --dry-run              # sizes and the exact sudo commands
+onyx system --dry-run              # what it would free, and the exact sudo commands
 onyx system --only journal         # just one task
 ```
 

@@ -302,6 +302,5 @@ pub fn remove(
     Ok(CommandRun {
         command: run.to_string(),
         exit,
-        summary: None,
     })
 }
