@@ -1,6 +1,6 @@
 # 014: `molt uninstall`
 
-Status: Implemented (UN-01 to UN-07); Draft (UN-08 to UN-15, #46)
+Status: Implemented (UN-01 to UN-07); Accepted (UN-08 to UN-15, #46)
 Prefix: UN
 
 ## Goal
