@@ -39,7 +39,11 @@ A scan produces **candidates**. Each candidate holds the path plus the identity 
   - Items on the same filesystem as `$XDG_DATA_HOME` go to `$XDG_DATA_HOME/Trash`.
   - Items on other filesystems go to `$topdir/.Trash-$uid`.
   - A matching `.trashinfo` file is written so the item can be restored with a normal file manager.
+  - The `.trashinfo` file is created first with `O_EXCL`, which reserves the name. The item is then renamed in without replacing anything (`RENAME_NOREPLACE`). A taken name gets a numeric suffix (`name.2`, `name.3`…).
+  - A trash directory that is a symlink, isn't a directory, or isn't owned by the user is not usable.
   - If no usable trash exists on the item's filesystem, the item is skipped with reason `no-trash`. It is never deleted permanently as a fallback.
+  - A directory holding a mount is skipped with reason `mount-point`, so a mount is never carried into the trash (SD-07).
+  - The outcome is `trashed`, with the bytes that emptying the trash would free (SD-13).
 - **SD-12** In `--dry-run`, no mutating syscall is made. The report is identical to a real run's, except that outcomes read `would-remove`.
 
 ### Reporting

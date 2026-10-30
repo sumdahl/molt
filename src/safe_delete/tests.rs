@@ -17,10 +17,6 @@ use std::time::{Duration, SystemTime};
 use proptest::prelude::*;
 use tempfile::TempDir;
 
-fn user() -> Uid {
-    Uid::from_raw(1000)
-}
-
 type Hook = Box<dyn FnMut(&CStr)>;
 
 thread_local! {
@@ -79,12 +75,14 @@ impl Sandbox {
         fs::write(outside.join("file"), "precious").unwrap();
         fs::write(outside.join("dir/precious"), "precious").unwrap();
         let ctx = Context {
+            data_home: home.join(".local/share"),
             xdg_dirs: [".config", ".cache", ".local/share", ".local/state"]
                 .map(|d| home.join(d))
                 .to_vec(),
             whitelist: whitelist.iter().map(|w| home.join(w)).collect(),
             home: home.clone(),
-            euid: user(),
+            // The owner of a fresh temp dir is the effective uid (root inside a test namespace).
+            euid: Uid::from_raw(fs::metadata(&root).unwrap().uid()),
         };
         Self {
             _dir: dir,
@@ -103,15 +101,30 @@ impl Sandbox {
     }
 
     fn plan(&self, paths: &[&Path], execution: Execution) -> Plan {
+        self.plan_with(paths, Mode::Permanent, execution)
+    }
+
+    fn plan_with(&self, paths: &[&Path], mode: Mode, execution: Execution) -> Plan {
+        // SD-16 would refuse every plan inside a test user namespace, where we are root.
+        let privilege = if self.ctx.euid.is_root() {
+            Privilege::System
+        } else {
+            Privilege::User
+        };
         Plan {
             candidates: paths.iter().map(|p| Candidate::scan(p).unwrap()).collect(),
+            mode,
             execution,
-            privilege: Privilege::User,
+            privilege,
         }
     }
 
     fn run(&self, paths: &[&Path], execution: Execution) -> Vec<Outcome> {
-        execute(&self.plan(paths, execution), &self.ctx)
+        self.run_with(paths, Mode::Permanent, execution)
+    }
+
+    fn run_with(&self, paths: &[&Path], mode: Mode, execution: Execution) -> Vec<Outcome> {
+        execute(&self.plan_with(paths, mode, execution), &self.ctx)
             .unwrap()
             .results
             .into_iter()
@@ -285,6 +298,17 @@ fn sd_06_symlinks_inside_a_directory_are_removed_as_links() {
     assert_eq!(snapshot(&sb.outside), before);
 }
 
+/// Creates `at` and mounts a fresh tmpfs on it. Only call inside `in_mount_namespace`.
+fn mount_tmpfs(at: &Path) {
+    fs::create_dir(at).unwrap();
+    let status = Command::new("mount")
+        .args(["-t", "tmpfs", "tmpfs"])
+        .arg(at)
+        .status()
+        .unwrap();
+    assert!(status.success());
+}
+
 /// Runs `body` in a private user and mount namespace so the test can mount a tmpfs
 /// without root. Locally it skips (with a note) where unprivileged user namespaces are
 /// disabled; on CI it fails instead.
@@ -323,13 +347,7 @@ fn sd_07_mounts_inside_a_candidate_are_never_entered() {
         let junk = sb.file(".cache/app/junk");
         let app = junk.parent().unwrap();
         let mnt = app.join("mnt");
-        fs::create_dir(&mnt).unwrap();
-        let mounted = Command::new("mount")
-            .args(["-t", "tmpfs", "tmpfs"])
-            .arg(&mnt)
-            .status()
-            .unwrap();
-        assert!(mounted.success());
+        mount_tmpfs(&mnt);
         fs::write(mnt.join("data"), "on another filesystem").unwrap();
 
         let outcome = sb.run(&[app], Execution::Live).remove(0);
@@ -433,6 +451,135 @@ fn sd_12_dry_run_changes_nothing_and_reports_what_a_live_run_does() {
     assert!(bytes > 0);
 }
 
+#[test]
+fn sd_11_items_go_to_the_home_trash_with_a_restorable_trashinfo() {
+    let sb = Sandbox::new();
+    let file = sb.file("Downloads/my file.iso");
+    let dir = sb
+        .file("Downloads/old app/bin")
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    let trash = sb.home.join(".local/share/Trash");
+
+    let outcomes = sb.run_with(&[&file, &dir], Mode::Trash, Execution::Live);
+
+    assert!(
+        outcomes
+            .iter()
+            .all(|o| matches!(o, Outcome::Trashed { bytes } if *bytes > 0))
+    );
+    assert!(!exists(&file) && !exists(&dir));
+    assert!(exists(&trash.join("files/my file.iso")));
+    assert!(exists(&trash.join("files/old app/bin")));
+    let info = fs::read_to_string(trash.join("info/my file.iso.trashinfo")).unwrap();
+    let encoded = file.to_str().unwrap().replace(' ', "%20");
+    let mut lines = info.lines();
+    assert_eq!(lines.next(), Some("[Trash Info]"));
+    assert_eq!(lines.next(), Some(format!("Path={encoded}").as_str()));
+    let date = lines.next().unwrap().strip_prefix("DeletionDate=").unwrap();
+    assert!(
+        jiff::civil::DateTime::strptime("%Y-%m-%dT%H:%M:%S", date).is_ok(),
+        "{date}"
+    );
+}
+
+#[test]
+fn sd_11_same_names_never_overwrite_each_other_in_the_trash() {
+    let sb = Sandbox::new();
+    let a = sb.file("a/report.pdf");
+    let b = sb.file("b/report.pdf");
+    let trash = sb.home.join(".local/share/Trash");
+
+    sb.run_with(&[&a, &b], Mode::Trash, Execution::Live);
+
+    for name in ["report.pdf", "report.pdf.2"] {
+        assert!(exists(&trash.join("files").join(name)), "{name}");
+        assert!(
+            exists(&trash.join("info").join(format!("{name}.trashinfo"))),
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn sd_11_sd_12_a_trash_dry_run_creates_nothing() {
+    let sb = Sandbox::new();
+    let file = sb.file("Downloads/setup.run");
+    let before = snapshot(&sb.home);
+
+    let dry = sb.run_with(&[&file], Mode::Trash, Execution::DryRun);
+    assert_eq!(snapshot(&sb.home), before);
+    let live = sb.run_with(&[&file], Mode::Trash, Execution::Live);
+
+    let Outcome::WouldTrash { bytes } = dry[0] else {
+        panic!("{dry:?}")
+    };
+    assert_eq!(live, [Outcome::Trashed { bytes }]);
+}
+
+#[test]
+fn sd_11_items_on_other_filesystems_go_to_the_topdir_trash() {
+    in_mount_namespace("sd_11_items_on_other", || {
+        let sb = Sandbox::new();
+        let mnt = sb.home.parent().unwrap().join("mnt");
+        mount_tmpfs(&mnt);
+        let file = mnt.join("disk.qcow2");
+        fs::write(&file, "vm").unwrap();
+
+        let outcome = sb.run_with(&[&file], Mode::Trash, Execution::Live);
+
+        assert!(matches!(outcome[0], Outcome::Trashed { .. }), "{outcome:?}");
+        let bin = mnt.join(format!(".Trash-{}", sb.ctx.euid.as_raw()));
+        assert!(exists(&bin.join("files/disk.qcow2")));
+        assert!(exists(&bin.join("info/disk.qcow2.trashinfo")));
+    });
+}
+
+#[test]
+fn sd_11_without_a_usable_trash_items_are_skipped_never_deleted() {
+    in_mount_namespace("sd_11_without_a_usable", || {
+        let sb = Sandbox::new();
+        let mnt = sb.home.parent().unwrap().join("mnt");
+        mount_tmpfs(&mnt);
+        let file = mnt.join("keep.iso");
+        fs::write(&file, "data").unwrap();
+        // A trash that is a symlink could send the item anywhere.
+        symlink(
+            &sb.outside,
+            mnt.join(format!(".Trash-{}", sb.ctx.euid.as_raw())),
+        )
+        .unwrap();
+        let before = snapshot(&sb.outside);
+
+        let outcome = sb.run_with(&[&file], Mode::Trash, Execution::Live);
+
+        assert_eq!(outcome, [Outcome::Skipped(Reason::NoTrash)]);
+        assert!(exists(&file));
+        assert_eq!(snapshot(&sb.outside), before);
+    });
+}
+
+#[test]
+fn sd_07_sd_11_a_directory_holding_a_mount_is_not_trashed() {
+    in_mount_namespace("sd_07_sd_11_a_directory", || {
+        let sb = Sandbox::new();
+        let app = sb
+            .file("Downloads/app/junk")
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        let mnt = app.join("mnt");
+        mount_tmpfs(&mnt);
+        fs::write(mnt.join("data"), "on another filesystem").unwrap();
+
+        let outcome = sb.run_with(&[&app], Mode::Trash, Execution::Live);
+
+        assert_eq!(outcome, [Outcome::Skipped(Reason::MountPoint)]);
+        assert!(exists(&mnt.join("data")));
+    });
+}
+
 // Reporting
 
 #[test]
@@ -494,6 +641,7 @@ fn sd_16_root_without_a_system_step_is_refused_before_anything_is_touched() {
     let file = sb.file("cache/f");
     sb.ctx.euid = Uid::ROOT;
     let mut plan = sb.plan(&[&file], Execution::Live);
+    plan.privilege = Privilege::User;
 
     assert_eq!(execute(&plan, &sb.ctx).unwrap_err(), PlanRefused::Root);
     assert!(exists(&file));

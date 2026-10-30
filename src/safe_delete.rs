@@ -4,21 +4,22 @@
 #![allow(clippy::disallowed_methods)]
 
 use std::collections::HashMap;
-use std::ffi::{CStr, CString};
+use std::ffi::{CStr, CString, OsStr};
 use std::fmt;
-use std::iter;
+use std::mem;
 use std::os::fd::OwnedFd;
 use std::path::{Component, Path, PathBuf};
 
 pub use rustix::fs::Uid;
 use rustix::fs::{
-    AtFlags, CWD, Dir, FileType, Mode, OFlags, Stat, fstat, openat, statat, unlinkat,
+    AtFlags, CWD, Dir, FileType, Mode as FileMode, OFlags, Stat, fstat, openat, statat, unlinkat,
 };
 pub use rustix::io::Errno;
 use rustix::path::Arg;
 
 #[cfg(test)]
 mod tests;
+mod trash;
 
 /// What a scan saw at a path, rechecked right before removal (SD-08, SD-10).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,6 +84,14 @@ pub enum Execution {
     Live,
 }
 
+/// What happens to a candidate. The default per kind of data is the rule's choice (000).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    Permanent,
+    /// SD-11: move to the FreeDesktop trash.
+    Trash,
+}
+
 /// Who created the plan. Only an explicit system step may run as root (SD-16, P-04).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Privilege {
@@ -93,6 +102,7 @@ pub enum Privilege {
 #[derive(Debug, Clone)]
 pub struct Plan {
     pub candidates: Vec<Candidate>,
+    pub mode: Mode,
     pub execution: Execution,
     pub privilege: Privilege,
 }
@@ -102,6 +112,8 @@ pub struct Plan {
 #[derive(Debug, Clone)]
 pub struct Context {
     pub home: PathBuf,
+    /// `$XDG_DATA_HOME`, which holds the home trash (SD-11).
+    pub data_home: PathBuf,
     /// XDG base directories (config, cache, data, state…).
     pub xdg_dirs: Vec<PathBuf>,
     /// Paths the user's config says to never touch (P-03, SD-03).
@@ -118,14 +130,18 @@ pub enum Reason {
     MountPoint,
     ChangedSinceScan,
     ModifiedSinceScan,
+    NoTrash,
 }
 
-/// What happened to one candidate. `bytes` are on-disk bytes freed (SD-13).
-/// `partial` means something inside was kept, such as a mount (SD-07).
+/// What happened to one candidate. `bytes` are on-disk bytes freed, or for the trash, freed
+/// once it is emptied (SD-13). `partial` means something inside was kept, such as a mount
+/// (SD-07).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
     Removed { bytes: u64, partial: bool },
     WouldRemove { bytes: u64, partial: bool },
+    Trashed { bytes: u64 },
+    WouldTrash { bytes: u64 },
     Skipped(Reason),
     Failed { errno: Errno, bytes: u64 },
 }
@@ -173,7 +189,9 @@ pub fn execute(plan: &Plan, ctx: &Context) -> Result<Report, PlanRefused> {
     }
     let guard = Guard::new(ctx);
     let mut remover = Remover {
+        mode: plan.mode,
         execution: plan.execution,
+        bins: trash::Bins::new(&ctx.data_home, ctx.euid),
         links: HashMap::new(),
     };
     let results = plan
@@ -204,8 +222,10 @@ impl Guard {
     fn new(ctx: &Context) -> Self {
         let home = canonical(&ctx.home);
         Self {
-            roots: iter::once(home.clone())
-                .chain(ctx.xdg_dirs.iter().map(|dir| canonical(dir)))
+            roots: [&ctx.home, &ctx.data_home]
+                .into_iter()
+                .chain(&ctx.xdg_dirs)
+                .map(|dir| canonical(dir))
                 .collect(),
             secrets: SECRETS.iter().map(|secret| home.join(secret)).collect(),
             firefox_profiles: home.join(".mozilla/firefox"),
@@ -290,7 +310,9 @@ const LIST: OFlags = OFlags::RDONLY
     .union(OFlags::CLOEXEC);
 
 struct Remover {
+    mode: Mode,
     execution: Execution,
+    bins: trash::Bins,
     /// SD-13: hard-linked inodes seen so far, as (link count at first sight, links seen).
     links: HashMap<(u64, u64), (u64, u64)>,
 }
@@ -301,9 +323,11 @@ impl Remover {
         match self.remove_candidate(candidate, guard, &mut tally) {
             Ok(()) => {
                 let Tally { bytes, partial } = tally;
-                match self.execution {
-                    Execution::DryRun => Outcome::WouldRemove { bytes, partial },
-                    Execution::Live => Outcome::Removed { bytes, partial },
+                match (self.mode, self.execution) {
+                    (Mode::Permanent, Execution::DryRun) => Outcome::WouldRemove { bytes, partial },
+                    (Mode::Permanent, Execution::Live) => Outcome::Removed { bytes, partial },
+                    (Mode::Trash, Execution::DryRun) => Outcome::WouldTrash { bytes },
+                    (Mode::Trash, Execution::Live) => Outcome::Trashed { bytes },
                 }
             }
             Err(Stop::Skip(reason)) => Outcome::Skipped(reason),
@@ -341,7 +365,7 @@ impl Remover {
             }
         })?;
         let dir = match FileType::from_raw_mode(stat.st_mode) {
-            FileType::Directory => Some(openat(&parent_fd, name, LIST, Mode::empty())?),
+            FileType::Directory => Some(openat(&parent_fd, name, LIST, FileMode::empty())?),
             _ => None,
         };
         // SD-08: verify the directory actually opened, not just the name looked up before.
@@ -354,15 +378,68 @@ impl Remover {
             return Err(Stop::Skip(Reason::MountPoint));
         }
 
-        match dir {
-            Some(dir) => {
-                if !self.remove_dir(&parent_fd, name, &dir, &stat, tally)? {
-                    tally.partial = true;
-                }
+        match self.mode {
+            Mode::Permanent => {
+                tally.partial = !self.delete(&parent_fd, name, dir.as_ref(), &stat, tally)?;
+                Ok(())
             }
-            None => self.unlink(&parent_fd, name, &stat, AtFlags::empty(), tally)?,
+            Mode::Trash => self.trash(&parent, &parent_fd, name, dir.as_ref(), &stat, tally),
         }
-        Ok(())
+    }
+
+    /// Removes the candidate `name` (`dir` if it is a directory). Returns whether all of
+    /// it went.
+    fn delete(
+        &mut self,
+        parent_fd: &OwnedFd,
+        name: &OsStr,
+        dir: Option<&OwnedFd>,
+        stat: &Stat,
+        tally: &mut Tally,
+    ) -> Result<bool, Errno> {
+        match dir {
+            Some(dir) => self.remove_dir(parent_fd, name, dir, stat, tally),
+            None => self
+                .unlink(parent_fd, name, stat, AtFlags::empty(), tally)
+                .map(|()| true),
+        }
+    }
+
+    /// SD-11: moves the candidate into the trash on its own filesystem.
+    fn trash(
+        &mut self,
+        parent: &Path,
+        parent_fd: &OwnedFd,
+        name: &OsStr,
+        dir: Option<&OwnedFd>,
+        stat: &Stat,
+        tally: &mut Tally,
+    ) -> Result<(), Stop> {
+        // A dry-run delete measures what emptying the trash would free, and finds mounts.
+        let execution = mem::replace(&mut self.execution, Execution::DryRun);
+        let whole = self.delete(parent_fd, name, dir, stat, tally);
+        self.execution = execution;
+        if !whole? {
+            return Err(Stop::Skip(Reason::MountPoint));
+        }
+        let no_trash = |_| Stop::Skip(Reason::NoTrash);
+        let bin = self
+            .bins
+            .open(Identity::from(stat).dev, parent, execution)
+            .map_err(no_trash)?;
+        let Some(bin) = bin.filter(|_| execution == Execution::Live) else {
+            return Ok(());
+        };
+        // An item swapped in after the identity check would only be moved to the trash,
+        // where it can be restored; rename never follows a symlink.
+        // SD-04 guarantees a UTF-8 name.
+        let name = name.to_str().ok_or(Stop::Skip(Reason::InvalidPath))?;
+        bin.put(parent_fd, name, &parent.join(name))
+            .map_err(|errno| match errno {
+                // Same st_dev but a different mount (a bind mount): no trash here.
+                Errno::XDEV => Stop::Skip(Reason::NoTrash),
+                errno => Stop::Fail(errno),
+            })
     }
 
     /// Empties `dir`, then removes it from `parent` unless something inside had to stay.
@@ -404,7 +481,7 @@ impl Remover {
             } else {
                 #[cfg(test)]
                 tests::before_descend(&name);
-                let sub = openat(dir, &name, LIST, Mode::empty())?;
+                let sub = openat(dir, &name, LIST, FileMode::empty())?;
                 let sub_stat = fstat(&sub)?;
                 emptied &= Identity::from(&sub_stat).dev == dev
                     && self.remove_dir(dir, &name, &sub, &sub_stat, tally)?;
@@ -456,10 +533,10 @@ fn blocks_and_links(stat: &Stat) -> (u64, u64) {
 /// Opens every component of a canonical absolute path without following symlinks, so the
 /// directory the guard checked is the one used.
 fn open_dir_nofollow(path: &Path) -> Result<OwnedFd, Errno> {
-    let mut fd = openat(CWD, "/", WALK, Mode::empty())?;
+    let mut fd = openat(CWD, "/", WALK, FileMode::empty())?;
     for component in path.components() {
         if let Component::Normal(name) = component {
-            fd = openat(&fd, name, WALK, Mode::empty())?;
+            fd = openat(&fd, name, WALK, FileMode::empty())?;
         }
     }
     Ok(fd)
