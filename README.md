@@ -4,7 +4,7 @@ Reclaim disk space on Linux, safely.
 
 onyx finds what is filling your disk (caches, build artifacts, old packages, installers, leftovers from removed apps), shows you exactly what it would remove, and removes only what it can prove is safe to remove. It works on any Linux distribution. Distro-specific steps turn on only where their tools are installed; pacman is the first, with apt, dnf, zypper, Flatpak and Snap planned.
 
-> **Status: v0.1.0, early.** `onyx scan`, `onyx clean`, `onyx purge`, `onyx installer`, `onyx uninstall`, `onyx system`, `onyx optimize`, `onyx history`, `onyx analyze`, `onyx status`, `onyx update` and `onyx remove` work. Other commands are being built spec-first.
+> **Status: v0.2.0, early.** `onyx scan`, `onyx clean`, `onyx purge`, `onyx installer`, `onyx uninstall`, `onyx system`, `onyx optimize`, `onyx history`, `onyx analyze`, `onyx status`, `onyx update` and `onyx remove` work. Other commands are being built spec-first.
 
 ## Commands
 
@@ -165,12 +165,15 @@ See [`specs/000-principles.md`](specs/000-principles.md) for the full set of rul
 
 ## Install
 
-Download v0.1.0, the latest release, from the [Releases page](https://github.com/sumdahl/onyx/releases), then:
+Download v0.2.0, the latest release, from the [Releases page](https://github.com/sumdahl/onyx/releases), then:
 
 ```sh
-tar xzf onyx-v0.1.0-x86_64-unknown-linux-musl.tar.gz
-sha256sum -c onyx-v0.1.0-x86_64-unknown-linux-musl.tar.gz.sha256
-install -Dm755 onyx-v0.1.0-x86_64-unknown-linux-musl/onyx ~/.local/bin/onyx
+f=onyx-v0.2.0-x86_64-unknown-linux-musl.tar.gz
+curl -fsSLO https://raw.githubusercontent.com/sumdahl/onyx/main/.github/allowed_signers
+ssh-keygen -Y verify -f allowed_signers -I sumdahl -n onyx-release -s $f.sha256.sig < $f.sha256
+sha256sum -c $f.sha256
+tar xzf $f
+install -Dm755 onyx-v0.2.0-x86_64-unknown-linux-musl/onyx ~/.local/bin/onyx
 ```
 
 Later updates: `onyx update`.
