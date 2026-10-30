@@ -73,11 +73,12 @@ Releases are cut from `main` by pushing a tag. `.github/workflows/release.yml` d
 2. Set `version` in `Cargo.toml` and run `cargo check` so `Cargo.lock` is updated.
 3. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and add a fresh empty `## [Unreleased]` above it.
 4. Update `README.md`, including the version shown in the install snippet.
-5. Commit `chore: release vX.Y.Z`, then `git tag -a vX.Y.Z -m "molt vX.Y.Z"` and `git push origin main vX.Y.Z`.
+5. Commit `chore: release vX.Y.Z`, then sign the tag with a maintainer's SSH key listed in `.github/allowed_signers`: `git -c gpg.format=ssh -c user.signingkey=~/.ssh/id_personal.pub tag -s vX.Y.Z -m "molt vX.Y.Z"`, and `git push origin vX.Y.Z`. Releases are always signed; never use `git tag -a`.
 6. The workflow then:
+   - refuses a tag that isn't signed by a key in `.github/allowed_signers`,
    - checks that the tag matches `Cargo.toml` and that `CHANGELOG.md` has a section for the version,
    - runs fmt, clippy and the tests,
    - builds a static musl binary and smoke-tests it,
    - publishes a GitHub Release with that changelog section as the notes, plus the tarball and its sha256.
 
-Agents prepare the release commit. A human confirms before the tag is pushed.
+Agents prepare the release commit. A human confirms before the tag is pushed. The signing key has a passphrase, so the maintainer signs the tag (or loads the key into `ssh-agent` first).
