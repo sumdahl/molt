@@ -1,0 +1,19 @@
+# Built-in cleaning rules (specs/002-rules-engine.md). Compiled into the binary.
+# The full first set lands with #5.
+
+[[rule]]
+id = "thumbnails"
+name = "Thumbnail cache"
+category = "system-user"
+kind = "regenerable"
+paths = ["$XDG_CACHE_HOME/thumbnails"]
+
+[[rule]]
+id = "npm-cache"
+name = "npm download cache"
+category = "dev-tools"
+kind = "regenerable"
+paths = ["~/.npm/_cacache"]
+clean_with = ["npm", "cache", "clean", "--force"]
+processes = ["npm"]
+requires = ["npm"]

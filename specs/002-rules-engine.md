@@ -1,6 +1,6 @@
 # 002: Rules engine
 
-Status: Accepted
+Status: Implemented
 Prefix: RE
 
 ## Goal
