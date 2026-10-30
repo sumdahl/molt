@@ -1,6 +1,6 @@
 # 012: `molt analyze`
 
-Status: Draft (AN-10 to AN-17, #34; AN-01 to AN-09 are Implemented)
+Status: Accepted (AN-10 to AN-17, #34; AN-01 to AN-09 are Implemented)
 Prefix: AN
 
 ## Goal
@@ -55,16 +55,13 @@ The browser is a full-screen view over the same walk. It's written in molt: raw 
 - P-05: a snapshot of the temp folder is unchanged after a run.
 - Browser: the key handling and the screen are pure functions from state and key to state, and from state and size to lines of text, so unit tests drive them without a terminal. One smoke test runs the browser under `script` (a pseudo-terminal), sends `j`, `l`, `h` and `q`, and checks the screen text and that the terminal is restored (the alternate-screen exit sequence is the last thing written).
 
-## Open questions (#34)
-
-1. **When the browser opens.** By default on a terminal, as `ncdu` does (proposed), with `--list` for the printed listing? Or only with a flag (`--browse`), keeping today's output as the default?
-2. **Memory.** Every folder in memory, files read when a folder is opened (proposed, AN-17)? Or every file too, as `ncdu` does: exact hard-link sizes per file, but far more memory on big homes.
-3. **Keys.** Are AN-13's keys right? Vim keys plus arrows, as asked in #11.
-4. **Resizing.** Without a signal-handling crate, molt checks the terminal size on every key and every 250 ms while idle (proposed), instead of catching `SIGWINCH`.
-
 ## Decisions
 
 - **The current directory by default**, like `du` and `ncdu`.
 - **`--depth` 1 by default.**
 - **20 entries per level**, then a "more" line; `--all` shows every entry.
+- **The browser opens by default on a terminal**, as `ncdu` does; `--list` prints the listing instead.
+- **Folders in memory, files read on opening** (AN-17).
+- **Vim keys plus arrows** (AN-13).
+- **The size is checked on every key and every 250 ms**, since catching `SIGWINCH` needs a crate or unsafe code.
 - **No new dependency.** The parallel walk uses standard library threads, and the browser (#34) will drive the terminal through `rustix`. molt keeps full control of its code (maintainer decision).
