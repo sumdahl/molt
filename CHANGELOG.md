@@ -20,6 +20,8 @@ The release workflow publishes the section matching the pushed tag as the GitHub
 
 - `molt completions <bash|zsh|fish>`: a static completion script for every command, flag and fixed id, generated from molt's own command definitions with no completion crate; it never runs molt on Tab. Spec: `specs/018-completions.md`.
 
+- The `molt` menu: a bare `molt` on a terminal lists every command under the banner; arrows or `j`/`k` and Enter run one exactly as typed (dry run, preview and question included), with the menu's `--dry-run`/`--live`/`--yes`, then return. Uninstall asks for the app's name; Analyze opens on `~`; Status runs live. Piped, a bare `molt` is still `molt scan`. Spec: `specs/019-menu.md`.
+
 ### Changed
 - `system`, `optimize` and `purge` check `--only`/`--skip` ids through clap, which lists the valid ones and suggests the closest (still exit 2).
 - Releases are signed: the release workflow builds only from a tag signed with a maintainer's SSH key, listed in `.github/allowed_signers`. Check a tag with `git -c gpg.ssh.allowedSignersFile=.github/allowed_signers verify-tag vX.Y.Z`.

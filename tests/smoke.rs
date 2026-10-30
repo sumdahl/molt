@@ -2592,3 +2592,66 @@ fn co_04_zsh_and_fish_scripts_parse_where_installed() {
         assert!(out.status.success(), "{shell}: {}", stderr(&out));
     }
 }
+
+#[test]
+fn mn_01_a_piped_bare_molt_is_still_a_scan() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let out = Home::new().molt(&[], &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("Total"), "{}", stdout(&out));
+    assert!(!stdout(&out).contains("Enter run"), "{}", stdout(&out));
+}
+
+#[test]
+fn mn_01_mn_02_the_menu_opens_on_a_terminal_and_q_restores_it() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let before = snapshot(&home.path);
+    let Some((code, screen)) = molt_pty(&home, "", &["j", "q"], &[]) else {
+        return eprintln!("skipped: script(1) or timeout(1) isn't installed");
+    };
+    assert_eq!(code, Some(0), "{screen}");
+    assert!(screen.contains("> Clean"), "j moved to Clean: {screen}");
+    assert!(screen.contains("Enter run"), "{screen}");
+    assert!(restored(&screen), "{screen:?}");
+    assert_eq!(snapshot(&home.path), before, "MN-05");
+}
+
+#[test]
+fn mn_03_mn_04_p_05_a_picked_command_runs_as_typed_and_comes_back() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.rules(PLAIN_JUNK_RULE);
+    let junk = home.file("junk/a", 4096);
+    let before = snapshot(&home.path);
+
+    // Clean, under --dry-run: the preview, the dry-run stop, Enter, then quit.
+    let Some((code, screen)) = molt_pty(&home, "--dry-run", &["j", "\r", "\r", "q"], &[]) else {
+        return eprintln!("skipped: script(1) or timeout(1) isn't installed");
+    };
+    assert_eq!(code, Some(0), "{screen}");
+    assert!(
+        screen.contains("Preview. Nothing has changed yet"),
+        "{screen}"
+    );
+    assert!(screen.contains("Test junk"), "{screen}");
+    // MN-03: the menu's --dry-run reached the command, which stopped at its preview.
+    assert!(!screen.contains("Clean all of the above?"), "{screen}");
+    assert!(screen.contains("Press Enter to go back"), "{screen}");
+    assert!(restored(&screen), "{screen:?}");
+    assert!(exists(&junk));
+    assert_eq!(snapshot(&home.path), before);
+
+    // Uninstall with an empty name goes straight back.
+    let keys = ["jjjj", "\r", "\r", "q"];
+    let (code, screen) = molt_pty(&home, "", &keys, &[]).unwrap();
+    assert_eq!(code, Some(0), "{screen}");
+    assert!(screen.contains("App to uninstall"), "{screen}");
+    assert_eq!(snapshot(&home.path), before);
+}

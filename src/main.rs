@@ -262,6 +262,11 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         print!("{}", completions::script(args.shell, Cli::command()));
         return Ok(ExitCode::SUCCESS);
     }
+    // MN-01: a bare `molt` with a terminal on both ends is the menu.
+    let terminal = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    if cli.command.is_none() && !cli.json && terminal {
+        return run_menu(cli);
+    }
     // BN-02, BN-03: a bare `molt` only, never above a named command or JSON.
     if cli.command.is_none() && !cli.json {
         if let Some(banner) = molt::banner::for_terminal() {
@@ -679,6 +684,57 @@ fn run_system(
         print!("{result}");
     }
     Ok(ExitCode::from(result.exit_code()))
+}
+
+/// MN-02 to MN-04: the menu, until it's quit. Each pick is parsed and run like a
+/// typed command line, with the menu's global flags.
+fn run_menu(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let banner = molt::banner::for_terminal().unwrap_or_default();
+    let mut selected = 0;
+    while let Some(entry) = molt::menu::pick(&banner, &mut selected)? {
+        let mut args: Vec<std::ffi::OsString> = vec!["molt".into()];
+        for (on, flag) in [
+            (cli.dry_run, "--dry-run"),
+            (cli.live, "--live"),
+            (cli.yes, "--yes"),
+        ] {
+            if on {
+                args.push(flag.into());
+            }
+        }
+        args.extend(entry.args().iter().map(Into::into));
+        match entry {
+            molt::menu::Entry::Uninstall => match ask_app()? {
+                Some(app) => args.push(app.into()),
+                None => continue,
+            },
+            molt::menu::Entry::Analyze => args.extend(std::env::var_os("HOME")),
+            _ => {}
+        }
+        let picked = Cli::try_parse_from(&args)?;
+        let code = run(&picked).unwrap_or_else(|error| {
+            eprintln!("molt: {error}");
+            ExitCode::from(1)
+        });
+        // MN-04: ExitCode can't be read back, and molt only uses 0 to 3.
+        if let Some(n) = (1..=3).find(|n| code == ExitCode::from(*n)) {
+            println!("\nExit code {n}.");
+        }
+        print!("\nPress Enter to go back to the menu. ");
+        std::io::stdout().flush()?;
+        std::io::stdin().lock().read_line(&mut String::new())?;
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// MN-03: the app to uninstall, asked on a normal line. `None` when left empty.
+fn ask_app() -> std::io::Result<Option<String>> {
+    print!("App to uninstall (its exact folder name; empty to go back): ");
+    std::io::stdout().flush()?;
+    let mut name = String::new();
+    std::io::stdin().lock().read_line(&mut name)?;
+    let name = name.trim();
+    Ok((!name.is_empty()).then(|| name.to_owned()))
 }
 
 /// HI-01 to HI-07: the operation log, newest first.
