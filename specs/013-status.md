@@ -1,6 +1,6 @@
 # 013: `molt status`
 
-Status: Implemented (ST-01 to ST-14); #38 adds the live view
+Status: Implemented (ST-01 to ST-14); Draft (ST-15 to ST-19, #38)
 Prefix: ST
 
 ## Goal
@@ -41,12 +41,27 @@ Prefix: ST
   and never drops below 0. The text shows the score and every reason that cost points ("−15: / is 92 % full"); `--json` has `score` and `reasons`.
 - **ST-14** Anything the machine doesn't have (no battery, no fans, no hwmon) is left out of the text and the JSON, and costs no points.
 
+### Live view (#38)
+
+- **ST-15** `molt status --watch` shows the same report full screen and refreshes it every 2 seconds, until `q` or Ctrl-C. `--interval <seconds>` (1 to 60) changes the period. The CPU, disk and network rates are measured over the whole period instead of 200 ms, so they're steadier.
+- **ST-16** It uses the same terminal code as the `analyze` browser (AN-15, AN-16): raw mode through `rustix`, the alternate screen, the terminal always restored, redrawn to fit the window, and long lines cut to its width.
+- **ST-17** Keys: `q` or Ctrl-C quit, `p` pauses and resumes (the screen says "paused"), and `r` refreshes now.
+- **ST-18** `--watch` needs a terminal on stdin and stdout. Without one, or with `--json`, it's a usage error (exit 2) naming why; `molt status --json` stays the way to poll from a script.
+- **ST-19** The view only reads, like the snapshot (ST-01).
+
 ## Test strategy
 
 - The parsers take text (`/proc/stat`, `/proc/loadavg`, `/proc/meminfo`, `/proc/self/mounts`, `/proc/<pid>/stat`), so unit tests feed them fixtures, including missing fields, odd process names (`(a b) c)`), and mount paths with escaped spaces (`\040`).
 - The disk filter has table tests: pseudo filesystems out, bind repeats out, the shortest mount point kept.
 - A unit test spawns a child that exits without being waited for and checks it's listed as a zombie, then reaps it.
 - Smoke tests on the real machine, read-only: exit 0, the four sections, the JSON shape, and a snapshot of the temp home unchanged.
+
+## Open questions (#38)
+
+1. **Period.** Every 2 seconds by default (proposed, like `top`'s 3 and `htop`'s 1.5), with `--interval`?
+2. **Rates over the period.** Measure the rates over the whole period (proposed, steadier), or keep the 200 ms sample?
+3. **Keys.** `q`/Ctrl-C quit, `p` pause, `r` refresh now (proposed)?
+4. **Shared terminal code.** Move the `analyze` browser's terminal code into a `terminal` module both use (proposed), rather than copying it?
 
 ## Decisions
 
