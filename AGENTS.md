@@ -6,6 +6,18 @@ Guide for AI agents (and humans) working on molt, a Linux disk cleaner written i
 
 molt deletes files. A bug here destroys someone's data. When in doubt, refuse, skip, and report (P-02).
 
+## Workflow: one issue at a time
+
+All work is tracked as GitHub issues, grouped into milestones by phase.
+
+1. **Pick** the lowest-numbered open issue in the earliest open milestone, unless the maintainer names another. Work on one issue at a time.
+2. **Break down** an issue that is too big for one PR, or an `epic` whose phase has started, into new issues first. Link them from the parent.
+3. **Branch** from `main` as `<issue>-<slug>`, e.g. `2-config-whitelist`.
+4. **Commit** in small Conventional Commits that reference the issue (`feat: load config (#2)`).
+5. **Open a PR** whose body says `Closes #N` and summarises what changed and how it was tested. CI must be green.
+6. **Merge** only after the maintainer approves. Squash-merge, then delete the branch.
+7. **Update the issue** when plans change. Questions for the maintainer go in the issue, as well as in chat.
+
 ## Workflow: spec-first
 
 1. **No behaviour without a spec.** Find the spec in `specs/`. If none covers the change, write or extend one (see `specs/README.md`) and get it accepted before writing code.
