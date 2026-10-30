@@ -4,6 +4,7 @@
 pub mod clean;
 pub mod config;
 pub mod processes;
+pub mod purge;
 pub mod rules;
 pub mod safe_delete;
 pub mod scan;

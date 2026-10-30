@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::rules::{self, Category, Match, Rule, RuleId, SkipReason};
+use crate::rules::{self, Category, Findings, Match, Rule, RuleId, SkipReason};
 use crate::safe_delete::{
     self, Candidate, Context, Execution, Mode, Outcome, Permissions, Plan, PlanRefused, Privilege,
 };
@@ -24,6 +24,9 @@ pub struct ScanReport {
     pub rules: Vec<RuleReport>,
     pub skipped: Vec<SkipEntry>,
     pub inactive: Vec<RuleId>,
+    /// The command that frees what this report shows.
+    #[serde(skip)]
+    pub freed_by: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -80,7 +83,19 @@ pub fn survey(
     mode: Option<Mode>,
 ) -> Result<Survey, PlanRefused> {
     let env = &startup.env;
-    let mut findings = rules::find(rules, &env.dirs, &env.search_path);
+    let findings = rules::find(rules, &env.dirs, &env.search_path);
+    measure_findings(rules, findings, startup, mode)
+}
+
+/// Measures `findings` for `rules` with a safe-delete dry run (SC-02). `mode` overrides
+/// every rule's mode (CN-10).
+pub fn measure_findings(
+    rules: &[Rule],
+    mut findings: Findings,
+    startup: &Startup,
+    mode: Option<Mode>,
+) -> Result<Survey, PlanRefused> {
+    let env = &startup.env;
     if let Some(mode) = mode {
         findings
             .matches
@@ -131,6 +146,7 @@ pub fn survey(
             })
             .collect(),
         inactive: findings.inactive,
+        freed_by: "molt clean",
     };
     Ok(Survey {
         report,
@@ -321,8 +337,9 @@ impl fmt::Display for ScanReport {
         }
         writeln!(
             f,
-            "Total: {} can be freed with `molt clean`.",
-            human_size(self.total)
+            "Total: {} can be freed with `{}`.",
+            human_size(self.total),
+            self.freed_by
         )
     }
 }

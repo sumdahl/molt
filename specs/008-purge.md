@@ -1,6 +1,6 @@
 # 008: `molt purge`
 
-Status: Accepted
+Status: Implemented
 Prefix: PG
 
 ## Goal
@@ -38,11 +38,11 @@ Prefix: PG
 ## Requirements
 
 ### Finding
-- **PG-01** Only folders under `purge_paths` are searched. With none set, `purge` prints how to set them and exits 0.
+- **PG-01** Only folders under `purge_paths` are searched. With none set, `purge` prints how to set them (on stderr), shows an empty preview, and exits 0.
 - **PG-02** A build folder is a candidate only when its kind's marker file is in the same directory. A folder named `build` or `target` with no marker is never a candidate.
-- **PG-03** The walk never follows symlinks, never crosses filesystems, never descends into a candidate, and skips directories it can't read, reporting them (P-12). Hidden directories other than the build folders in the table aren't searched (`.git`, `.cache`).
+- **PG-03** The walk never follows symlinks, never crosses filesystems, never descends into a candidate, and skips directories it can't read, reporting them (P-12) under the id `purge-paths`, as is a `purge_paths` entry that is a symlink. Hidden directories other than the build folders in the table aren't searched (`.git`, `.cache`).
 - **PG-04** A project is left out when anything in its directory, other than its build folders, changed in the last 7 days (the newest mtime of the files directly in it and in `src/`, if present). The preview says how many projects were left out for this.
-- **PG-05** A candidate holding a Git-tracked file is left out: molt checks for a `.git` directory at the project or above it, and if found runs `git ls-files <folder>` in that repository; any output, or a failure to run `git`, means leave it (P-02). Without `git` on `$PATH`, projects inside a Git repository are left out.
+- **PG-05** A candidate holding a Git-tracked file is left out: molt checks for a `.git` directory at the project or above it, and if found runs `git -c core.fsmonitor=false ls-files -z -- <folder>` in the project, with `GIT_OPTIONAL_LOCKS=0`, so a repository's config can't make molt run its code or write to it. Any output, or a failure to run `git`, means leave it (P-02). Without `git` on `$PATH`, projects inside a Git repository are left out.
 - **PG-06** A build folder inside another candidate's project is still found once: candidates never overlap.
 
 ### Preview, consent, acting

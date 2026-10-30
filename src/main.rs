@@ -2,11 +2,14 @@
 
 use std::io::{BufRead, IsTerminal, Write};
 use std::process::ExitCode;
+use std::time::SystemTime;
 
 use clap::{Args, Parser, Subcommand};
 use molt::clean::{self, Busy};
 use molt::config::{Decision, Requested};
 use molt::processes;
+use molt::purge;
+use molt::rules::{Rule, RuleId};
 use molt::safe_delete::{Mode, Permissions};
 use molt::scan::{self, Survey};
 use molt::startup::{self, Startup};
@@ -38,9 +41,25 @@ enum Command {
     Scan,
     /// Free the space `scan` shows: preview first, then ask, then clean.
     Clean(CleanArgs),
+    /// Remove build folders (target, node_modules, .venv…) of projects under purge_paths:
+    /// preview first, then ask.
+    Purge(PurgeArgs),
     /// Free system space (pacman cache, journal, coredumps) through each tool's own
     /// command, run with sudo: preview first, then ask.
     System(SystemArgs),
+}
+
+#[derive(Clone, Args)]
+struct PurgeArgs {
+    /// Only these kinds: cargo, node, python-venv, gradle, maven, next, zig.
+    #[arg(long, num_args = 1.., value_name = "KIND")]
+    only: Vec<String>,
+    /// Leave these kinds out.
+    #[arg(long, num_args = 1.., value_name = "KIND")]
+    skip: Vec<String>,
+    /// Move to the trash instead of deleting.
+    #[arg(long)]
+    trash: bool,
 }
 
 #[derive(Clone, Args)]
@@ -118,6 +137,7 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
     match &cli.command {
         None | Some(Command::Scan) => run_scan(cli, &startup),
         Some(Command::Clean(args)) => run_clean(cli, args, &startup),
+        Some(Command::Purge(args)) => run_purge(cli, args, &startup),
         Some(Command::System(args)) => run_system(cli, args, &startup),
     }
 }
@@ -138,7 +158,83 @@ fn run_clean(
     let (rules, busy) = clean::leave_out_busy(rules, &processes::running());
     let preview = scan::survey(&rules, startup, args.mode())?;
     print_preview(cli, &preview, &busy)?;
+    ask_and_act(cli, startup, &preview, &rules, args.fix_permissions)
+}
 
+/// PG-01..PG-08: finds build folders under `purge_paths`, then goes on as `clean` does.
+fn run_purge(
+    cli: &Cli,
+    args: &PurgeArgs,
+    startup: &Startup,
+) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let all = purge::rules();
+    let kinds = match clean::select(&all, &args.only, &args.skip) {
+        Ok(kinds) => kinds,
+        Err(unknown) => {
+            // PG-08
+            eprintln!("molt: there is no project kind `{unknown}`; nothing changed");
+            return Ok(ExitCode::from(2));
+        }
+    };
+    let home = &startup.env.dirs.home;
+    let roots: Vec<_> = startup
+        .config
+        .purge_paths
+        .iter()
+        .map(|path| path.resolve(home))
+        .collect();
+    // PG-01
+    if roots.is_empty() {
+        eprintln!(
+            "molt: no purge_paths set. Add the folders holding your projects to {}, \
+             e.g. purge_paths = [\"~/projects\"]",
+            startup.env.dirs.config.join("molt/config.toml").display()
+        );
+    }
+    let mut findings = purge::find(&roots, &startup.env.search_path, SystemTime::now());
+    let picked = |rule: &RuleId| kinds.iter().any(|kind| kind.id == *rule);
+    findings.matches.retain(|found| picked(&found.rule));
+    // Walk errors belong to no kind, so they stay.
+    let is_kind = |rule: &RuleId| all.iter().any(|kind| kind.id == *rule);
+    findings
+        .skipped
+        .retain(|skip| picked(&skip.rule) || !is_kind(&skip.rule));
+    let mut preview =
+        scan::measure_findings(&kinds, findings, startup, args.trash.then_some(Mode::Trash))?;
+    preview.report.freed_by = "molt purge";
+    print_preview(cli, &preview, &[])?;
+    if !cli.json {
+        print_left_out(&preview);
+    }
+    ask_and_act(cli, startup, &preview, &kinds, false)
+}
+
+/// PG-04, PG-05: how many projects the preview left out, and why.
+fn print_left_out(preview: &Survey) {
+    for (reason, why) in [
+        ("changed-in-the-last-7-days", "changed in the last 7 days"),
+        ("git-tracked", "may hold Git-tracked files"),
+    ] {
+        let count = preview
+            .report
+            .skipped
+            .iter()
+            .filter(|skip| skip.reason == reason)
+            .count();
+        if count > 0 {
+            println!("Left out {count} build folders: {why}. See --json.");
+        }
+    }
+}
+
+/// CN-05 to CN-07, CN-11: after the preview, the shared consent and the live run.
+fn ask_and_act(
+    cli: &Cli,
+    startup: &Startup,
+    preview: &Survey,
+    rules: &[Rule],
+    fix_permissions: bool,
+) -> Result<ExitCode, Box<dyn std::error::Error>> {
     // CN-07
     if stop_for_dry_run(startup) || preview.report.rules.is_empty() {
         return Ok(ExitCode::SUCCESS);
@@ -156,7 +252,7 @@ fn run_clean(
         .map(|rule| rule.locked.len())
         .sum();
     let permissions = if locked > 0
-        && (args.fix_permissions
+        && (fix_permissions
             || (interactive
                 && confirm(&format!(
                     "Open the {locked} locked folders (add u+rwx) so they can be removed too?"
@@ -166,7 +262,7 @@ fn run_clean(
         Permissions::Keep
     };
 
-    let result = clean::act(&preview, &rules, startup, permissions)?;
+    let result = clean::act(preview, rules, startup, permissions)?;
     if cli.json {
         println!("{}", serde_json::json!({ "result": result }));
     } else {
