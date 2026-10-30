@@ -27,7 +27,7 @@ An ASCII-art "molt" greets you on a terminal, at the top of `molt --help` and of
 ## Requirements
 
 - **BN-01** The banner is the six lines above: printable ASCII only, at most 40 columns wide, followed by one empty line.
-- **BN-02** It's printed at the top of `molt --help` and `molt help`, and of a bare `molt` run (the default `molt scan`), when stdout is a terminal.
+- **BN-02** It's printed at the top of `molt --help` and `molt help`, and of a bare `molt` run, when stdout is a terminal. With stdin a terminal too, that run is the menu (019, MN-01), which shows the banner at its top; otherwise it's the default `molt scan`.
 - **BN-03** It's never printed when stdout isn't a terminal, with `--json`, with `--version`, for any subcommand named on the command line (`molt scan` included), or on stderr. That output is byte for byte what it was before.
 - **BN-04** On a terminal the art is drawn in green and the tagline dimmed, then the colour is reset. With `NO_COLOR` set to anything but the empty string (no-color.org), or `TERM=dumb`, it's plain text with no escape codes.
 

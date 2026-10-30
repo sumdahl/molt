@@ -67,4 +67,4 @@ What this spec deliberately leaves out.
 | 016 | [The molt banner](016-banner.md) | BN | Implemented |
 | 017 | [`molt history`](017-history.md) | HI | Implemented |
 | 018 | [Shell completions](018-completions.md) | CO | Implemented |
-| 019 | [The `molt` menu](019-menu.md) | MN | Accepted |
+| 019 | [The `molt` menu](019-menu.md) | MN | Implemented |

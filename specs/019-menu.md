@@ -1,6 +1,6 @@
 # 019: The `molt` menu
 
-Status: Accepted (#60)
+Status: Implemented
 Prefix: MN
 
 ## Goal

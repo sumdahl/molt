@@ -108,9 +108,13 @@ molt completions zsh > ~/.zfunc/_molt     # with fpath+=(~/.zfunc) before compin
 molt completions fish > ~/.config/fish/completions/molt.fish
 ```
 
+### The menu
+
+Run `molt` on its own in a terminal for a menu of every command, under the banner. Pick one with the arrows or `j`/`k` and Enter: it runs exactly as if you'd typed it, dry run and question included, then comes back. Flags given to `molt` (`--dry-run`, `--yes`) carry over. Piped, a bare `molt` is still `molt scan`.
+
 ### Planned
 
-An interactive `molt` menu, self-update, and AUR, `.deb` and `cargo install` packages. See the Phase 5 milestone on GitHub.
+Self-update, optional fingerprint confirmation, and AUR, `.deb` and `cargo install` packages. See the Phase 5 milestone on GitHub.
 
 ## Options and configuration
 

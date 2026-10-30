@@ -8,6 +8,7 @@ pub mod completions;
 pub mod config;
 pub mod history;
 pub mod installer;
+pub mod menu;
 pub mod optimize;
 pub mod processes;
 pub mod purge;
