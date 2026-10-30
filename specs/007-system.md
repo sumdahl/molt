@@ -1,6 +1,6 @@
 # 007: `molt system`
 
-Status: Accepted
+Status: Implemented
 Prefix: SY
 
 ## Goal
@@ -29,8 +29,8 @@ Prefix: SY
 | id | Active when found | Size shown | Preview (no sudo) | Live command |
 |---|---|---|---|---|
 | `pacman-cache` | `paccache` | on-disk size of `/var/cache/pacman/pkg` | `paccache -dk2`, `paccache -duk0` | `paccache -rk2`, `paccache -ruk0` |
-| `journal` | `journalctl` | `journalctl --disk-usage` | none; shows the size and the limit | `journalctl --vacuum-size=500M` |
-| `coredumps` | `systemd-tmpfiles`, and `/var/lib/systemd/coredump` exists | on-disk size of `/var/lib/systemd/coredump` | `systemd-tmpfiles --clean --dry-run --prefix /var/lib/systemd/coredump` (systemd 256 or later; older versions show the size only) | `systemd-tmpfiles --clean --prefix /var/lib/systemd/coredump` |
+| `journal` | `journalctl` | on-disk size of `/var/log/journal` and `/run/log/journal` | `journalctl --disk-usage` | `journalctl --vacuum-size=500M` |
+| `coredumps` | `systemd-tmpfiles` | on-disk size of `/var/lib/systemd/coredump` (0 if it doesn't exist) | `systemd-tmpfiles --clean --dry-run --prefix /var/lib/systemd/coredump` (systemd 256 or later; older versions show the size only) | `systemd-tmpfiles --clean --prefix /var/lib/systemd/coredump` |
 
 - `paccache -rk2` keeps the two newest versions of each installed package (a downgrade stays possible). `-ruk0` removes every cached version of packages that are no longer installed.
 - The journal is trimmed to 500 MiB, oldest first. Nothing newer than the limit is lost.
@@ -43,15 +43,15 @@ Prefix: SY
 - **SY-02** A task whose tools aren't found is left out and reported as inactive (P-10). A tool is found only on an absolute `$PATH` entry (SC-10), and `sudo` must be found the same way, or every task is inactive.
 
 ### Preview and consent
-- **SY-03** Every run, live or dry, shows the preview first (P-14): each task's id, its current size, its preview's summary line, and the exact live command line, with `sudo` in front.
+- **SY-03** Every run, live or dry, shows the preview first (P-14): each task's name, its current size, its preview's last line of output ("nothing to remove" if it printed none), and the exact live command line, with the absolute `sudo` path in front.
 - **SY-04** Preview commands run without `sudo`, with no shell, stdin closed, and `$PATH` limited to its absolute entries. Their output goes to stderr. A preview that fails or can't start is reported, and its task is still shown with its current size.
 - **SY-05** A dry run (`--dry-run`, the config, or `MOLT_DRY_RUN`, with the CL-06 notice) stops after the preview. It never runs `sudo` and never prompts for a password (P-05).
 - **SY-06** A live run asks once, default no, as CN-05 does: anything but `y` or `yes` changes nothing and exits 0 with "Nothing changed." Without a terminal on stdin it needs `--yes`, or it prints the preview and exits 1.
 
 ### Acting
 - **SY-07** Each live command runs as `sudo -- <tool path> <args>`, with the tool's absolute path, so `sudo` runs exactly the program the preview showed. No shell, stdin from the terminal (for `sudo`'s password prompt), and output on stderr.
-- **SY-08** Tasks run in the order of the table. A task whose command fails (non-zero exit, or it can't start) is reported as failed with its exit status, and the remaining tasks still run: they are independent.
-- **SY-09** What a task freed is its size before minus after, measured the same way as the preview.
+- **SY-08** Tasks run in the order of the table. A task whose command fails (non-zero exit, or it can't start) is reported as failed with its exit status, and its later commands don't run; the remaining tasks still run, as they are independent.
+- **SY-09** What a task freed is its size before minus after, measured the same way as the preview: on-disk size, hard links once, no symlinks followed, no other filesystems.
 
 ### Reporting
 - **SY-10** The result lists, per task, the commands run, their exit status, and the bytes freed, then the total. The exit code is 0 when every command succeeded, 3 when any failed (P-13). `--json` prints the preview and the result as in CN-04.
@@ -64,7 +64,7 @@ Prefix: SY
 - SY-07: the recorded `sudo` arguments start with `--` and an absolute tool path.
 - SY-02: with no `paccache` on `$PATH`, the pacman task is inactive, and a relative `$PATH` entry holding a fake tool is ignored.
 - SY-08: a fake tool that exits 1 makes its task failed, the next task still runs, and molt exits 3.
-- The size of `/var/...` folders comes from a path that tests point at a temp folder (a test-build override, as the sandbox tripwire does), so no test reads the real system.
+- Sizes are measured under a root folder the library takes; the binary passes `/`. Unit tests pass a temp root, and a fake tool that removes a file there proves SY-09. Smoke tests use the real root, which is only read, and don't assert sizes.
 
 ## Decisions
 

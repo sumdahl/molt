@@ -10,6 +10,7 @@ use molt::processes;
 use molt::safe_delete::{Mode, Permissions};
 use molt::scan::{self, Survey};
 use molt::startup::{self, Startup};
+use molt::system;
 
 /// Reclaim disk space on Linux, safely.
 #[derive(Parser)]
@@ -37,6 +38,19 @@ enum Command {
     Scan,
     /// Free the space `scan` shows: preview first, then ask, then clean.
     Clean(CleanArgs),
+    /// Free system space (pacman cache, journal, coredumps) through each tool's own
+    /// command, run with sudo: preview first, then ask.
+    System(SystemArgs),
+}
+
+#[derive(Clone, Args)]
+struct SystemArgs {
+    /// Run only these tasks: pacman-cache, journal, coredumps.
+    #[arg(long, num_args = 1.., value_name = "ID")]
+    only: Vec<String>,
+    /// Leave these tasks out.
+    #[arg(long, num_args = 1.., value_name = "ID")]
+    skip: Vec<String>,
 }
 
 #[derive(Clone, Args)]
@@ -104,6 +118,7 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
     match &cli.command {
         None | Some(Command::Scan) => run_scan(cli, &startup),
         Some(Command::Clean(args)) => run_clean(cli, args, &startup),
+        Some(Command::System(args)) => run_system(cli, args, &startup),
     }
 }
 
@@ -125,28 +140,14 @@ fn run_clean(
     print_preview(cli, &preview, &busy)?;
 
     // CN-07
-    if let Decision::DryRun(_) = startup.decision {
-        if let Some(notice) = startup::dry_run_notice(startup.decision) {
-            eprintln!("molt: {notice}");
-        }
-        return Ok(ExitCode::SUCCESS);
-    }
-    if preview.report.rules.is_empty() {
+    if stop_for_dry_run(startup) || preview.report.rules.is_empty() {
         return Ok(ExitCode::SUCCESS);
     }
     // CN-05
-    let interactive = !cli.yes;
-    if interactive {
-        if !std::io::stdin().is_terminal() {
-            return Err(
-                "no terminal to ask for confirmation; pass --yes to clean. Nothing changed".into(),
-            );
-        }
-        if !confirm("Clean all of the above?")? {
-            println!("Nothing changed.");
-            return Ok(ExitCode::SUCCESS);
-        }
+    if !go_ahead(cli, "Clean all of the above?")? {
+        return Ok(ExitCode::SUCCESS);
     }
+    let interactive = !cli.yes;
     // CN-06, LF-05: a separate consent, never implied by --yes.
     let locked: usize = preview
         .report
@@ -172,6 +173,83 @@ fn run_clean(
         print!("{result}");
     }
     Ok(ExitCode::from(result.exit_code()))
+}
+
+/// SY-01..SY-11: previews every task, asks once, then runs each through sudo.
+fn run_system(
+    cli: &Cli,
+    args: &SystemArgs,
+    startup: &Startup,
+) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let search_path = &startup.env.search_path;
+    let tasks = system::detect(search_path);
+    let selected = match system::select(tasks.active.clone(), &args.only, &args.skip) {
+        Ok(selected) => selected,
+        Err(unknown) => {
+            eprintln!("molt: there is no system task `{unknown}`; nothing changed");
+            return Ok(ExitCode::from(2));
+        }
+    };
+    let root = std::path::Path::new("/");
+    let preview = system::preview(&tasks, &selected, root, search_path);
+    let mut out = std::io::stdout().lock();
+    if cli.json {
+        writeln!(out, "{}", serde_json::json!({ "preview": preview }))?;
+    } else {
+        writeln!(out, "Preview. Nothing has changed yet:\n")?;
+        write!(out, "{preview}")?;
+    }
+    out.flush()?;
+    drop(out);
+
+    // SY-05: a dry run never reaches sudo.
+    if stop_for_dry_run(startup) || selected.is_empty() {
+        return Ok(ExitCode::SUCCESS);
+    }
+    let Some(sudo) = &tasks.sudo else {
+        return Ok(ExitCode::SUCCESS);
+    };
+    // SY-06
+    if !go_ahead(cli, "Run all of the above with sudo?")? {
+        return Ok(ExitCode::SUCCESS);
+    }
+    // SY-11: fail closed before the first command.
+    let mut log = molt::safe_delete::CommandLog::open(&startup.env.context(&startup.config))?;
+    let result = system::act(sudo, &selected, root, search_path, &mut log)?;
+    if cli.json {
+        println!("{}", serde_json::json!({ "result": result }));
+    } else {
+        print!("{result}");
+    }
+    Ok(ExitCode::from(result.exit_code()))
+}
+
+/// CN-07, SY-05: a dry run stops after the preview, saying why.
+fn stop_for_dry_run(startup: &Startup) -> bool {
+    let Decision::DryRun(_) = startup.decision else {
+        return false;
+    };
+    if let Some(notice) = startup::dry_run_notice(startup.decision) {
+        eprintln!("molt: {notice}");
+    }
+    true
+}
+
+/// CN-05, SY-06: `--yes`, or a yes on the terminal. With neither, nothing changes.
+fn go_ahead(cli: &Cli, question: &str) -> Result<bool, Box<dyn std::error::Error>> {
+    if cli.yes {
+        return Ok(true);
+    }
+    if !std::io::stdin().is_terminal() {
+        return Err(
+            "no terminal to ask for confirmation; pass --yes to go ahead. Nothing changed".into(),
+        );
+    }
+    let yes = confirm(question)?;
+    if !yes {
+        println!("Nothing changed.");
+    }
+    Ok(yes)
 }
 
 /// P-14, CN-04: printed in full before anything changes, `--json` included.
