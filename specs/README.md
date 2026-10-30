@@ -63,4 +63,4 @@ What this spec deliberately leaves out.
 | 012 | [`molt analyze`](012-analyze.md) | AN | Implemented |
 | 013 | [`molt status`](013-status.md) | ST | Implemented |
 | 014 | [`molt uninstall`](014-uninstall.md) | UN | Implemented |
-| 015 | [`molt optimize`](015-optimize.md) | OP | Implemented (OP-01..14) |
+| 015 | [`molt optimize`](015-optimize.md) | OP | Implemented (OP-01..14); Draft (OP-15..20) |

@@ -1,11 +1,11 @@
 # 015: `molt optimize`
 
-Status: Implemented (OP-01 to OP-14)
+Status: Implemented (OP-01 to OP-14); Draft (OP-15 to OP-20, #50)
 Prefix: OP
 
 ## Goal
 
-`molt optimize` does safe system upkeep through each tool's own command, the way `molt system` (007) frees space: it shows everything first, asks once, and runs each command through `sudo`. It covers packages nothing needs any more (#48) and maintenance tasks (#49). Read-only health checks (#50) add requirements here later.
+`molt optimize` does safe system upkeep through each tool's own command, the way `molt system` (007) frees space: it shows everything first, asks once, and runs each command through `sudo`. It covers packages nothing needs any more (#48), maintenance tasks (#49), and read-only health checks (#50).
 
 ## Non-goals
 
@@ -47,6 +47,13 @@ Prefix: OP
 - `fc-cache` without `-f` rebuilds only your font caches that are out of date.
 - Flushing the DNS cache drops remembered answers; the next lookups ask again.
 
+## Health checks
+
+| id | Active when found | Read-only query (no sudo) | Reports |
+|---|---|---|---|
+| `failed-units` | `systemctl` | `systemctl --failed --plain --no-legend`, then the same with `--user` | each failed unit, and where to look closer |
+| `smart` | `smartctl` | `smartctl -H /dev/<disk>` for each whole disk | each disk's overall health: passed, failing, or needs root |
+
 ## Requirements
 
 - **OP-01** `molt optimize` lists every active task. `--only <id>…` and `--skip <id>…` narrow the list; an unknown id is a usage error (exit 2), as SY-01.
@@ -66,6 +73,14 @@ Prefix: OP
 - **OP-13** No maintenance command gets `--force` or `-f`, and none takes a path from molt: `fstrim --all` chooses its own filesystems.
 - **OP-14** The live commands run after the package removals; a failing one doesn't stop the rest (OP-08).
 
+### Health (#50)
+- **OP-15** The checks come last. They only read: no `sudo`, no live command, nothing in the question or the log. They show in every run, dry or live, and `--only`/`--skip` pick them by id. A run with only checks asks nothing.
+- **OP-16** `failed-units` lists each failed unit's name from both queries, marked "(user)" for the user's own, and ends with `systemctl status <unit>` and `journalctl -b -u <unit>` as where to look. With none it says "no failed units". A query that fails is reported, and the other still runs.
+- **OP-17** `smart` checks each whole disk in `/sys/block` except virtual ones (`loop`, `ram`, `zram`, `dm-`, `md`, `sr`, `fd`, `nbd`), whose names are only ASCII letters and digits. It runs `smartctl -H /dev/<disk>` once per disk, with no other arguments.
+- **OP-18** A disk's line is "passed" when smartctl says `PASSED` or `OK`, "FAILING" when it says `FAILED` or its exit status has bit 3 (disk failing) set, "needs root" when it couldn't open the device (bit 1) with the exact `sudo smartctl -H /dev/<disk>` to run yourself, and otherwise "no SMART data". molt never runs smartctl through `sudo`.
+- **OP-19** A failed unit or a failing disk is reported, not fixed. The exit code is unchanged by what the checks find (P-13 counts what molt did, not the machine's state).
+- **OP-20** `--json` puts each check's findings in its task's `found` as a list of lines.
+
 ## Test strategy
 
 - Smoke tests with fake `sudo`, `pacman`, `apt-get`, `dnf` and `zypper` scripts in a temp dir that record their arguments, as in 007's and 014's tests. No test runs a real one.
@@ -74,6 +89,7 @@ Prefix: OP
 - OP-04: a fake listing `-Rdd` or `a b` leaves the task out.
 - OP-05: pacman's exit 1 with no output shows "nothing to remove" and runs nothing.
 - OP-08: a failing fake removal exits 3 and the next task still runs.
+- OP-15 to OP-20: fake `systemctl` (one failed system unit, one user unit) and `smartctl` (passing). A dry run and a live run both show them and record no `sudo`. With only checks there's no question even without a terminal. The disk filter is unit-tested on a temp `/sys/block`. The health line is unit-tested for each outcome, including NVMe's `OK`.
 - OP-09 to OP-14: fake `fstrim`, `fc-cache` and `resolvectl`. A dry run records only `resolvectl statistics`. `--yes` records `sudo -- <bin>/fstrim --all --verbose`, a bare `fc-cache` with no `sudo`, and `sudo -- <bin>/resolvectl flush-caches`. Without `sudo`, only `font-cache` is active. A failing `resolvectl statistics` leaves `dns-cache` out.
 
 ## Decisions
@@ -81,4 +97,5 @@ Prefix: OP
 - **A new command, not a `molt system` task.** `system` frees space and measures it; optimize's tasks are upkeep, and #49 and #50 add tasks that free nothing.
 - **Names passed explicitly** where the manager takes them, so the live run can't remove more top-level packages than the preview showed, even if the system changed in between.
 - **Two yeses**, as `molt uninstall`: molt's, then the manager's. The maintenance tools don't ask again; molt's question is the only one, which is fine as none of them removes a file.
+- **Checks never use sudo.** A read-only check that prompts for a password would make the dry run less than dry. molt names the command to run yourself instead.
 - **No fstrim preview.** molt could list discard-capable filesystems itself, but `fstrim --all` decides on its own, and a list that might differ from what runs would be worse than none.
