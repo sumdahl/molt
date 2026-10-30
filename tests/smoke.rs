@@ -1297,3 +1297,57 @@ fn an_03_an_05_partial_exits_3_and_a_bad_path_exits_1() {
     assert_eq!(not_dir.status.code(), Some(1));
     assert!(stderr(&not_dir).contains("not a directory"));
 }
+
+#[test]
+fn an_10_an_13_an_15_the_browser_navigates_and_restores_the_terminal() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let (script, timeout) = (Path::new("/usr/bin/script"), Path::new("/usr/bin/timeout"));
+    if !script.exists() || !timeout.exists() {
+        return eprintln!("skipped: script(1) or timeout(1) isn't installed");
+    }
+    let home = Home::new();
+    home.file("data/big/inner-file", 256 * 1024);
+    home.file("data/small", 4096);
+    let data = home.path.join("data");
+    let before = snapshot(&home.path);
+
+    let command = format!(
+        "{} 10 {} analyze {}",
+        timeout.display(),
+        env!("CARGO_BIN_EXE_molt"),
+        data.display()
+    );
+    let mut child = Command::new(script)
+        .args(["-qec", &command, "/dev/null"])
+        .env_clear()
+        .env("HOME", &home.path)
+        .env("TERM", "xterm")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    // Keys typed before molt switches to raw mode would wait for a newline.
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    use std::io::Write;
+    let mut stdin = child.stdin.take().unwrap();
+    stdin.write_all(b"l").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    stdin.write_all(b"hq").unwrap();
+    let out = child.wait_with_output().unwrap();
+    let screen = String::from_utf8_lossy(&out.stdout);
+
+    assert_eq!(out.status.code(), Some(0), "{screen:?}");
+    assert!(
+        screen.contains("\x1b[?1049h"),
+        "the alternate screen: {screen:?}"
+    );
+    assert!(screen.contains("big/"), "{screen:?}");
+    assert!(screen.contains("inner-file"), "opened big/: {screen:?}");
+    assert!(
+        screen.trim_end().ends_with("\x1b[?25h\x1b[?1049l"),
+        "the terminal is restored last: {screen:?}"
+    );
+    assert_eq!(snapshot(&home.path), before);
+}

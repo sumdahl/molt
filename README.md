@@ -54,10 +54,11 @@ molt installer --dry-run           # what would go
 molt installer --permanent         # delete instead of trashing
 ```
 
-`molt analyze [PATH]` shows where the space in a folder goes, largest first, without changing anything: on-disk sizes, hard links counted once, symlinks and other filesystems never entered. A `+` marks a size that's a lower bound because something inside couldn't be read.
+`molt analyze [PATH]` shows where the space in a folder goes, largest first, without changing anything. On a terminal it opens a full-screen browser (`j`/`k` or arrows to move, `l`/Enter to open, `h` to go up, `s` to sort, `r` to measure again, `?` for help, `q` to quit); piped, or with `--list`, it prints a listing: on-disk sizes, hard links counted once, symlinks and other filesystems never entered. A `+` marks a size that's a lower bound because something inside couldn't be read.
 
 ```sh
-molt analyze ~ --depth 2           # two levels, 20 largest per level
+molt analyze ~                     # browse your home
+molt analyze ~ --list --depth 2    # print two levels, 20 largest per level
 molt analyze --all --json          # everything, machine-readable
 ```
 
@@ -72,7 +73,7 @@ molt system --only journal         # just one task
 
 | Command | What it does |
 |---|---|
-| `molt analyze` browser | Full-screen explorer over `analyze`, with trashing of picked items |
+| Trash from `molt analyze` | Pick items in the browser and send them to the trash |
 | `molt status` | Live system health dashboard |
 | `molt uninstall` | Remove an app and its leftovers, across package managers |
 | `molt optimize` | Safe maintenance: orphan packages, TRIM, font cache, failed units |

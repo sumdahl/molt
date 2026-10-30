@@ -1,6 +1,6 @@
 # 012: `molt analyze`
 
-Status: Accepted (AN-10 to AN-17, #34; AN-01 to AN-09 are Implemented)
+Status: Implemented (AN-01 to AN-17; #35 adds trashing)
 Prefix: AN
 
 ## Goal
@@ -38,13 +38,13 @@ Prefix: AN
 
 The browser is a full-screen view over the same walk. It's written in molt: raw terminal mode through `rustix` termios and ANSI escape codes, with no terminal crate (Decisions).
 
-- **AN-10** `molt analyze` opens the browser when stdin and stdout are both terminals, and `--json` and `--list` aren't given. Otherwise it prints the listing (AN-06), as now. `--list` forces the listing.
+- **AN-10** `molt analyze` opens the browser when stdin and stdout are both terminals, and `--json` and `--list` aren't given. Otherwise it prints the listing (AN-06), as now. `--list` forces the listing. Leaving the browser exits 0; `--depth` and `--all` apply to the listing only.
 - **AN-11** While the walk runs, the screen shows a progress line (folders and bytes counted so far). `q` or Ctrl-C stops the walk and leaves.
 - **AN-12** The screen shows the current folder's path and total, then its entries largest first: size (`+` if partial), share of the folder, a bar, and the name. One entry is selected.
 - **AN-13** Keys: `j`/`k`/↓/↑ move, `g`/`G`/Home/End jump to the first or last entry, PgUp/PgDn move a screen, `l`/→/Enter open a folder, `h`/←/Backspace go up to the parent (never above the starting folder), `s` switches between size and name order, `r` measures the current folder again, `?` shows the keys, and `q` leaves.
 - **AN-14** The browser changes nothing. Trashing picked items is #35's.
 - **AN-15** Leaving the browser in any way (`q`, Ctrl-C, an error, a panic) restores the terminal: cooked mode, the cursor shown, and the normal screen back.
-- **AN-16** The screen redraws to fit when the terminal is resized. Names too long for the width are shortened in the middle with `…`.
+- **AN-16** The screen redraws to fit when the terminal is resized. Names too long for the width are shortened in the middle with `…`, and a narrow terminal drops the bar before the name. A terminal that reports no size (0 × 0) is drawn at 80 × 24.
 - **AN-17** Every folder of the walk is kept in memory, but a folder's files are read only when it's opened, so a home with millions of files fits in memory. A file whose hard-linked twin is elsewhere is shown at its own size there (AN-01 still holds for folder totals).
 
 ## Test strategy
@@ -63,5 +63,5 @@ The browser is a full-screen view over the same walk. It's written in molt: raw 
 - **The browser opens by default on a terminal**, as `ncdu` does; `--list` prints the listing instead.
 - **Folders in memory, files read on opening** (AN-17).
 - **Vim keys plus arrows** (AN-13).
-- **The size is checked on every key and every 250 ms**, since catching `SIGWINCH` needs a crate or unsafe code.
+- **The size is checked on every key and every 200 ms** (the read timeout, in tenths of a second), since catching `SIGWINCH` needs a crate or unsafe code.
 - **No new dependency.** The parallel walk uses standard library threads, and the browser (#34) will drive the terminal through `rustix`. molt keeps full control of its code (maintainer decision).

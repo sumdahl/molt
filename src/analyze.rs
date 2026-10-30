@@ -6,15 +6,19 @@ use std::fs;
 use std::io;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::thread::{Scope, ScopedJoinHandle};
 
 use serde::Serialize;
 
 use crate::scan::human_size;
 
+mod browse;
+mod terminal;
 #[cfg(test)]
 mod tests;
+
+pub use terminal::browse;
 
 /// AN-07: entries shown per level without `--all`.
 const SHOWN: usize = 20;
@@ -78,6 +82,26 @@ impl std::error::Error for AnalyzeError {
 
 /// Measures `root` with its children down to `depth` levels, largest first.
 pub fn measure(root: &Path, depth: usize) -> Result<Node, AnalyzeError> {
+    let mut tree = walk(root, depth, &Progress::default())?;
+    trim(&mut tree, depth);
+    Ok(tree)
+}
+
+/// AN-17: every folder under `root` with its total, in name order, but no files.
+pub(crate) fn measure_folders(root: &Path, progress: &Progress) -> Result<Node, AnalyzeError> {
+    walk(root, 0, progress)
+}
+
+/// AN-11: what the walk has counted so far, and a flag that stops it.
+#[derive(Debug, Default)]
+pub(crate) struct Progress {
+    pub folders: AtomicU64,
+    pub bytes: AtomicU64,
+    pub stop: AtomicBool,
+}
+
+/// The settled walk of `root`, its children in name order, files kept to `depth`.
+fn walk(root: &Path, depth: usize, progress: &Progress) -> Result<Node, AnalyzeError> {
     let meta =
         fs::symlink_metadata(root).map_err(|e| AnalyzeError::Unreadable(root.to_owned(), e))?;
     // AN-05: a symlink is refused too; analyze never follows one.
@@ -88,20 +112,21 @@ pub fn measure(root: &Path, depth: usize) -> Result<Node, AnalyzeError> {
     let walker = Walker {
         dev: meta.dev(),
         spare: AtomicUsize::new(spare),
+        progress,
     };
     let name = root.to_string_lossy().into_owned();
     let mut tree = std::thread::scope(|scope| {
         walker.dir(scope, root.to_owned(), name, meta.blocks() * 512, depth)
     });
     settle(&mut tree, &mut HashSet::new());
-    trim(&mut tree, depth);
     Ok(tree)
 }
 
 /// AN-02, AN-04: one walk over one filesystem; `spare` counts the threads still free.
-struct Walker {
+struct Walker<'p> {
     dev: u64,
     spare: AtomicUsize,
+    progress: &'p Progress,
 }
 
 enum Pending<'scope> {
@@ -109,7 +134,7 @@ enum Pending<'scope> {
     Running(ScopedJoinHandle<'scope, Node>),
 }
 
-impl Walker {
+impl Walker<'_> {
     /// Walks the folder at `path`. Every subfolder is kept (settle needs them all); files
     /// only while `depth` is above 0. Hard-linked files wait in `links` for `settle`.
     fn dir<'scope, 'env>(
@@ -121,6 +146,13 @@ impl Walker {
         depth: usize,
     ) -> Node {
         let mut node = Node::new(name, EntryKind::Dir, own);
+        self.progress.folders.fetch_add(1, Ordering::Relaxed);
+        self.progress.bytes.fetch_add(own, Ordering::Relaxed);
+        // AN-11: a stopped walk is a partial one.
+        if self.progress.stop.load(Ordering::Relaxed) {
+            node.partial = true;
+            return node;
+        }
         let Ok(entries) = fs::read_dir(&path) else {
             node.partial = true;
             return node;
@@ -165,6 +197,7 @@ impl Walker {
                 EntryKind::File | EntryKind::Symlink | EntryKind::Other => {}
             }
             node.bytes += bytes;
+            self.progress.bytes.fetch_add(bytes, Ordering::Relaxed);
             if depth > 0 {
                 node.children.push(Node::new(child_name, kind, bytes));
             }
@@ -203,7 +236,7 @@ impl Walker {
     }
 }
 
-impl Walker {
+impl Walker<'_> {
     /// Takes one spare thread, if any is left.
     fn claim_thread(&self) -> bool {
         let mut spare = self.spare.load(Ordering::Acquire);
@@ -220,6 +253,27 @@ impl Walker {
         }
         false
     }
+}
+
+/// AN-17: the entries of `dir` other than its subfolders on this filesystem, read now.
+/// Each file counts at its own size. What can't be read is left out; the folder's total
+/// already says it's partial.
+pub(crate) fn files(dir: &Path, dev: u64) -> Vec<Node> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let meta = fs::symlink_metadata(entry.path()).ok()?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            match kind_of(&meta, dev) {
+                EntryKind::Dir => None,
+                EntryKind::Mount => Some(Node::new(name, EntryKind::Mount, 0)),
+                kind => Some(Node::new(name, kind, meta.blocks() * 512)),
+            }
+        })
+        .collect()
 }
 
 fn kind_of(meta: &fs::Metadata, dev: u64) -> EntryKind {
