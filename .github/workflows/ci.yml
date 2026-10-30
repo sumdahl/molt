@@ -21,3 +21,23 @@ jobs:
       # CO-04: the zsh and fish completion scripts are syntax-checked by those shells.
       - run: sudo apt-get install -y --no-install-recommends zsh fish
       - run: cargo test
+
+  # PK-04: the release's packaging steps, run on every change against a local build.
+  packages:
+    runs-on: ubuntu-latest
+    env:
+      TARGET: x86_64-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable --profile minimal -t "$TARGET"
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: cargo build --release --locked --target "$TARGET"
+      - name: Package
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          packaging/tarball.sh "v$version" "$TARGET"
+      - name: AUR package
+        run: |
+          packaging/aur/fill.sh "$VERSION" "onyx-v$VERSION-$TARGET.tar.gz" aur
+          docker run --rm -v "$PWD/aur:/pkg" -v "$PWD/packaging/aur/check.sh:/check.sh:ro" archlinux:latest sh /check.sh

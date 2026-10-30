@@ -178,6 +178,15 @@ install -Dm755 onyx-v0.2.0-x86_64-unknown-linux-musl/onyx ~/.local/bin/onyx
 
 Later updates: `onyx update`.
 
+On Arch, each release from v0.3.0 on carries a ready `PKGBUILD` for `onyx-bin` (it's not on the AUR yet). Download it, then:
+
+```sh
+mkdir onyx-bin && mv onyx-bin.PKGBUILD onyx-bin/PKGBUILD && cd onyx-bin
+makepkg -si
+```
+
+pacman then owns onyx, so update and remove it with pacman; `onyx update` says so. The same goes for an onyx from `cargo install`, which cargo updates.
+
 From source:
 
 ```sh

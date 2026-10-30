@@ -22,6 +22,8 @@ pub struct Environment {
     pub dry_run: Option<OsString>,
     /// Absolute `$PATH` entries, where rules look for their tools (SC-10).
     pub search_path: Vec<PathBuf>,
+    /// PK-02: `$CARGO_HOME/bin`, where `cargo install` puts onyx.
+    pub cargo_bin: PathBuf,
     pub euid: Uid,
 }
 
@@ -67,6 +69,7 @@ pub fn environment(
             .filter(|path| path.is_absolute())
             .unwrap_or_else(|| home.join(default))
     };
+    let cargo_bin = xdg("CARGO_HOME", ".cargo").join("bin");
     let dirs = Dirs {
         config: xdg("XDG_CONFIG_HOME", ".config"),
         cache: xdg("XDG_CACHE_HOME", ".cache"),
@@ -90,6 +93,7 @@ pub fn environment(
                     .collect()
             })
             .unwrap_or_default(),
+        cargo_bin,
         euid,
     })
 }
