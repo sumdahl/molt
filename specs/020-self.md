@@ -1,6 +1,6 @@
 # 020: `molt update` and `molt remove`
 
-Status: Draft (#61)
+Status: Accepted (#61)
 Prefix: SE
 
 ## Goal
@@ -24,21 +24,17 @@ molt carries the allowed signers in the binary (from `.github/allowed_signers` a
 ## Requirements
 
 ### `molt update`
-- **SE-01** molt finds the newest release, then downloads its tarball, `.sha256` and `.sha256.sig` with `curl` into a fresh private folder under `$XDG_CACHE_HOME/molt/update/`. Only `https://github.com/sumdahl/molt/releases/...` URLs are fetched; `curl` gets `--proto =https --fail --location` and a size cap.
-- **SE-02** It verifies, in order, and stops at the first failure with nothing replaced: the signature of the `.sha256` against the built-in allowed signers (`ssh-keygen -Y verify -n molt-release`); that the `.sha256` names exactly the downloaded tarball; `sha256sum --check`; that the tarball holds exactly one regular file named `molt` (no links, no paths outside its folder); and that the new binary runs `--version` and prints the release's version.
+- **SE-01** molt finds the newest release from where `https://github.com/sumdahl/molt/releases/latest` redirects (`curl --head`, not followed), then downloads its tarball, `.sha256` and `.sha256.sig` with `curl` into a fresh folder of its own (mode 0700, created new, never reused) in the system temp folder, so a dry run leaves the home untouched. Only `https://github.com/sumdahl/molt/releases/...` URLs are asked for; `curl` gets `--proto =https --proto-redir =https --fail` and a 100 MiB cap. Only the `x86_64-unknown-linux-musl` build is published, so another machine is told there's no release for it.
+- **SE-02** It verifies, in order, and stops at the first failure with nothing replaced: the signature of the `.sha256` against the built-in allowed signers (`ssh-keygen -Y verify -n molt-release`); that the `.sha256` names exactly the downloaded tarball; `sha256sum --check`; that every entry `tar` lists is a regular file or folder inside the release's one top folder (no links, no absolute paths, no `..`), and that the folder holds a regular file `molt`; and that the new binary runs `--version` and prints the release's version.
 - **SE-03** The dry run (always shown first, P-14) lists the current and newest versions, the exact URLs, each verification step and its result, and what would be replaced. With nothing newer, it says so and changes nothing.
 - **SE-04** molt replaces only its own running binary (`/proc/self/exe`), and only when that file and its folder belong to you and are under your home. Otherwise it names the package manager or path to update with and exits 1, having changed nothing.
-- **SE-05** The swap goes through safe delete (P-01): the new binary is written beside the old one, then renamed over it in one `renameat` in the same folder, so molt is never missing or half-written. The old binary goes to the trash, so the update can be undone.
-- **SE-06** The download folder is removed through safe delete when molt is done, whatever happened. Each step is in the operation log.
+- **SE-05** The swap goes through safe delete (P-01): the new binary is copied beside the old one, then the two are exchanged in one `renameat2(RENAME_EXCHANGE)` in the same folder, so molt is never missing or half-written. The old binary, now under the temporary name, goes to the trash, so the update can be undone. A filesystem that can't exchange is reported, and nothing is replaced.
+- **SE-06** The download folder is removed through safe delete when molt is done, whatever happened. The swap is in the operation log as a command entry, and the old binary's move to the trash as an item entry.
+- **SE-09** In debug builds only (the ones tests use), `MOLT_TEST_ALLOWED_SIGNERS` names an allowed-signers file to use instead of the built-in one, so tests can sign a fake release with a test key. Release builds don't read it.
 
 ### `molt remove`
 - **SE-07** `molt remove` lists, with sizes, molt's binary (under SE-04's rule), `~/.config/molt`, `$XDG_CACHE_HOME/molt`, and `$XDG_STATE_HOME/molt` except the operation log, which stays unless `--with-log` is given. It also lists the completion files from README's paths, if present.
 - **SE-08** Everything goes to the trash through safe delete after the dry run and one question, default no. `--permanent` deletes instead. It ends by saying what was kept, and that molt is gone.
-
-## Open questions
-
-1. **The repository is private.** `curl` can't see releases without a token. Either the repo becomes public before this ships, or `molt update` downloads with `gh release download` (the user's own `gh` login) instead of `curl`. Recommendation: public, as the other packaging issues (#62 to #64) need it too.
-2. **The signature file** adds a step to each release: after CI publishes, the maintainer runs `ssh-keygen -Y sign -f ~/.ssh/id_personal -n molt-release <file>.sha256` and uploads the `.sig` (the agent prepares the exact commands). Recommendation: yes. Without it, `molt update` would trust GitHub and CI alone.
 
 ## Test strategy
 
@@ -50,6 +46,9 @@ molt carries the allowed signers in the binary (from `.github/allowed_signers` a
 - SE-07, SE-08: `remove` trashes the listed folders and the copy and keeps the log; `--with-log` takes it too.
 
 ## Decisions
+
+- **The repository goes public** before `molt update` is used for real (maintainer, 2026-10-30), so `curl` can see releases. Until then `molt update` reports that it can't find a release.
+- **The maintainer signs each release's checksum** (maintainer, 2026-10-30): after CI publishes, `ssh-keygen -Y sign -f ~/.ssh/id_personal -n molt-release <tarball>.sha256`, then `gh release upload vX.Y.Z <tarball>.sha256.sig`. AGENTS.md's release steps say so.
 
 - **Owning tools for the network and crypto**, as P-07 and the no-dependencies rule ask. `curl`, `sha256sum` and `ssh-keygen` are on nearly every Linux system.
 - **The maintainer signs the checksum, not CI.** The signing key never leaves the maintainer's machine.
