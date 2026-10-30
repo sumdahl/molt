@@ -10,8 +10,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 use crate::rules::find_tool;
-use crate::safe_delete::{Outcome, Uid};
+use crate::safe_delete::Outcome;
 use crate::scan::human_size;
+use crate::startup::Environment;
+use crate::uninstall::package;
 
 #[cfg(test)]
 mod tests;
@@ -48,22 +50,38 @@ fn principals(signers: &str) -> Vec<&str> {
 
 /// SE-04: the running binary, when it's yours to replace or remove: under your home,
 /// and it and its folder owned by you. `Err` says why not and what to use instead.
-pub fn own_binary(home: &Path, euid: Uid) -> Result<PathBuf, String> {
+pub fn own_binary(env: &Environment) -> Result<PathBuf, String> {
     let exe = fs::read_link("/proc/self/exe")
         .map_err(|error| format!("can't tell where onyx is installed: {error}"))?;
-    let owner = |path: &Path| fs::symlink_metadata(path).map(|meta| meta.uid()).ok();
-    let mine = exe.starts_with(home)
-        && owner(&exe) == Some(euid.as_raw())
-        && exe.parent().and_then(owner) == Some(euid.as_raw());
-    if mine {
-        Ok(exe)
-    } else {
-        Err(format!(
-            "onyx at {} isn't a copy you own in your home, so whatever installed it \
-             (pacman, apt, …) updates and removes it",
-            exe.display()
-        ))
+    judge(exe, env)
+}
+
+fn judge(exe: PathBuf, env: &Environment) -> Result<PathBuf, String> {
+    let at = exe.display();
+    // PK-02: cargo keeps its own record of what it installed.
+    if exe.starts_with(&env.cargo_bin) {
+        return Err(format!(
+            "cargo installed onyx at {at}: update it with `cargo install onyx-cli` \
+             and remove it with `cargo uninstall onyx-cli`"
+        ));
     }
+    let euid = env.euid.as_raw();
+    let owner = |path: &Path| fs::symlink_metadata(path).map(|meta| meta.uid()).ok();
+    let mine = exe.starts_with(&env.dirs.home)
+        && owner(&exe) == Some(euid)
+        && exe.parent().and_then(owner) == Some(euid);
+    if mine {
+        return Ok(exe);
+    }
+    Err(match package::owner_of(&exe, &env.search_path) {
+        Some((manager, package)) => format!(
+            "the {package} package installed onyx at {at}: update and remove it with {manager}"
+        ),
+        None => format!(
+            "onyx at {at} isn't a copy you own in your home, so whatever installed it \
+             updates and removes it"
+        ),
+    })
 }
 
 /// The tools an update needs, found on the absolute `$PATH` entries (SC-10).

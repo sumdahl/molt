@@ -2980,3 +2980,34 @@ fn se_07_remove_with_log_takes_the_operation_log_too() {
     assert!(!exists(&home.path.join(".local/state/onyx")));
     assert!(!exists(&home.path.join(".local/bin/onyx")));
 }
+
+#[test]
+fn pk_02_a_cargo_installed_onyx_is_left_to_cargo() {
+    if is_root() {
+        return eprintln!("skipped: onyx refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let copy = home.path.join(".cargo/bin/onyx");
+    fs::create_dir_all(copy.parent().unwrap()).unwrap();
+    fs::copy(env!("CARGO_BIN_EXE_onyx"), &copy).unwrap();
+    let before = snapshot(&home.path);
+    for args in [["update", "--yes"], ["remove", "--yes"]] {
+        let mut command = Command::new(&copy);
+        command
+            .args(args)
+            .env_clear()
+            .env("HOME", &home.path)
+            .env("PATH", "/usr/bin")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = spawn_fresh_copy(&mut command);
+        drop(child.stdin.take());
+        let out = child.wait_with_output().unwrap();
+        let said = format!("{}{}", stdout(&out), stderr(&out));
+        assert!(
+            said.contains("cargo uninstall onyx-cli"),
+            "{args:?}: {said}"
+        );
+        assert_eq!(snapshot(&home.path), before, "{args:?}");
+    }
+}

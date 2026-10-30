@@ -734,7 +734,7 @@ fn run_update(cli: &Cli, startup: &Startup) -> Result<ExitCode, Box<dyn std::err
     let ctx = startup.env.context(&startup.config);
     let current = env!("CARGO_PKG_VERSION");
     // SE-04: decided before anything is fetched.
-    let binary = match install::own_binary(&startup.env.dirs.home, ctx.euid) {
+    let binary = match install::own_binary(&startup.env) {
         Ok(binary) => binary,
         Err(why) => return Err(format!("{why}; nothing changed").into()),
     };
@@ -812,7 +812,7 @@ fn run_remove(
     startup: &Startup,
 ) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let ctx = startup.env.context(&startup.config);
-    let binary = install::own_binary(&startup.env.dirs.home, ctx.euid);
+    let binary = install::own_binary(&startup.env);
     let paths = install::leftovers(binary.as_deref().ok(), &startup.env.dirs, args.with_log);
     let mode = if args.permanent {
         Mode::Permanent

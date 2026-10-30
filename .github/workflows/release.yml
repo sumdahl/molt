@@ -51,14 +51,17 @@ jobs:
 
       # ponytail: x86_64 only; add an aarch64 matrix entry (ubuntu-24.04-arm) when there are arm users
       - name: Package
+        run: packaging/tarball.sh "$GITHUB_REF_NAME" "$TARGET"
+
+      # PK-04: built and installed in Arch before it's offered for the AUR.
+      - name: AUR package
         run: |
-          name="onyx-$GITHUB_REF_NAME-$TARGET"
-          mkdir "$name"
-          cp "target/$TARGET/release/onyx" README.md CHANGELOG.md LICENSE "$name/"
-          tar czf "$name.tar.gz" "$name"
-          sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+          packaging/aur/fill.sh "${GITHUB_REF_NAME#v}" "onyx-$GITHUB_REF_NAME-$TARGET.tar.gz" aur
+          docker run --rm -v "$PWD/aur:/pkg" -v "$PWD/packaging/aur/check.sh:/check.sh:ro" archlinux:latest sh /check.sh
+          cp aur/PKGBUILD onyx-bin.PKGBUILD
+          cp aur/.SRCINFO onyx-bin.SRCINFO
 
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --title "onyx $GITHUB_REF_NAME" --notes-file notes.md onyx-*.tar.gz onyx-*.sha256
+        run: gh release create "$GITHUB_REF_NAME" --title "onyx $GITHUB_REF_NAME" --notes-file notes.md onyx-*.tar.gz onyx-*.sha256 onyx-bin.PKGBUILD onyx-bin.SRCINFO

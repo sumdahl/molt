@@ -75,17 +75,20 @@ impl Manager {
         let by_name = ask(query, &args)
             .filter(|answer| self != Self::Apt || answer == "install ok installed")
             .map(|_| name.to_owned());
-        let by_program = || {
-            let program = program?.to_str()?;
-            match self {
-                Self::Pacman => ask(query, &["-Qqo", program]),
-                Self::Apt => dpkg_owner(&ask(query, &["-S", program])?).map(str::to_owned),
-                Self::Dnf | Self::Zypper => ask(query, &["-qf", "--qf", "%{NAME}", program]),
-                // UN-16: by the exact name only.
-                Self::FlatpakUser | Self::FlatpakSystem | Self::Snap => None,
-            }
-        };
+        let by_program = || self.owner_of(query, program?);
         by_name.or_else(by_program).filter(|package| plain(package))
+    }
+
+    /// The package that installed the file `program`.
+    fn owner_of(self, query: &Path, program: &Path) -> Option<String> {
+        let program = program.to_str()?;
+        match self {
+            Self::Pacman => ask(query, &["-Qqo", program]),
+            Self::Apt => dpkg_owner(&ask(query, &["-S", program])?).map(str::to_owned),
+            Self::Dnf | Self::Zypper => ask(query, &["-qf", "--qf", "%{NAME}", program]),
+            // UN-16: by the exact name only.
+            Self::FlatpakUser | Self::FlatpakSystem | Self::Snap => None,
+        }
     }
 
     /// UN-10: what removing `package` would do, found without root.
@@ -183,6 +186,16 @@ impl Package {
             Some(self.removal.clone())
         }
     }
+}
+
+/// PK-02: the first manager on `search_path` that installed the file `program`, and
+/// its package.
+pub fn owner_of(program: &Path, search_path: &[PathBuf]) -> Option<(Manager, String)> {
+    Manager::ALL.into_iter().find_map(|manager| {
+        let query = find_tool(manager.tools().0, search_path)?;
+        let package = manager.owner_of(&query, program).filter(|p| plain(p))?;
+        Some((manager, package))
+    })
 }
 
 /// UN-08: the first manager on `search_path` that owns `app`.

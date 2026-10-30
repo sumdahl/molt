@@ -1,0 +1,32 @@
+# Maintainer: Sumiran Dahal <50270034+sumdahl@users.noreply.github.com>
+# PK-03: the signed release binary, never built from source. The release workflow
+# fills pkgver and sha256sums (packaging/aur/fill.sh).
+pkgname=onyx-bin
+pkgver=0.0.0
+pkgrel=1
+pkgdesc='Reclaim disk space on Linux, safely'
+arch=('x86_64')
+url='https://github.com/sumdahl/onyx'
+license=('MIT')
+options=('!debug')
+_dir="onyx-v$pkgver-x86_64-unknown-linux-musl"
+source=("$url/releases/download/v$pkgver/$_dir.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  # PK-01: the completions come from the binary being packaged.
+  cd "$_dir"
+  ./onyx completions bash > onyx.bash
+  ./onyx completions zsh > _onyx
+  ./onyx completions fish > onyx.fish
+}
+
+package() {
+  cd "$_dir"
+  install -Dm755 onyx "$pkgdir/usr/bin/onyx"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 onyx.bash "$pkgdir/usr/share/bash-completion/completions/onyx"
+  install -Dm644 _onyx "$pkgdir/usr/share/zsh/site-functions/_onyx"
+  install -Dm644 onyx.fish "$pkgdir/usr/share/fish/vendor_completions.d/onyx.fish"
+}
