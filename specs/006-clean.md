@@ -1,6 +1,6 @@
 # 006: `molt clean`
 
-Status: Accepted
+Status: Implemented
 Prefix: CN
 
 ## Goal

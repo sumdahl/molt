@@ -27,6 +27,16 @@ struct Entry<'a> {
     permissions_fixed: u32,
 }
 
+/// CN-12: an owning tool's command, run instead of deleting its files.
+#[derive(Serialize)]
+struct CommandEntry<'a> {
+    time: String,
+    command: &'a [String],
+    /// `None` when the command couldn't start or was killed by a signal.
+    exit: Option<i32>,
+    bytes: u64,
+}
+
 fn is_zero(n: &u32) -> bool {
     *n == 0
 }
@@ -72,7 +82,25 @@ impl OpLog {
             errno,
             permissions_fixed,
         };
-        let mut line = serde_json::to_string(&entry)?;
+        self.append(&entry)
+    }
+
+    pub(super) fn record_command(
+        &mut self,
+        command: &[String],
+        exit: Option<i32>,
+        bytes: u64,
+    ) -> io::Result<()> {
+        self.append(&CommandEntry {
+            time: jiff::Timestamp::now().to_string(),
+            command,
+            exit,
+            bytes,
+        })
+    }
+
+    fn append(&mut self, entry: &impl Serialize) -> io::Result<()> {
+        let mut line = serde_json::to_string(entry)?;
         line.push('\n');
         // One write per line, so an O_APPEND log never interleaves half entries.
         self.0.write_all(line.as_bytes())

@@ -286,8 +286,20 @@ impl Rule {
             || self
                 .requires
                 .iter()
-                .any(|tool| search_path.iter().any(|dir| is_executable(&dir.join(tool))))
+                .any(|tool| find_tool(tool, search_path).is_some())
     }
+}
+
+/// The first executable named `tool` in the search path. A name with a `/` is never
+/// looked up, so a rule can't point outside the search path.
+pub fn find_tool(tool: &str, search_path: &[PathBuf]) -> Option<PathBuf> {
+    if tool.contains('/') {
+        return None;
+    }
+    search_path
+        .iter()
+        .map(|dir| dir.join(tool))
+        .find(|path| is_executable(path))
 }
 
 fn is_executable(path: &Path) -> bool {

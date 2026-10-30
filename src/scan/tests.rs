@@ -37,6 +37,7 @@ fn sc_02_failed_items_are_counted_on_the_rule_line() {
                 bytes: 0,
                 outcome: "failed",
                 reason: Some("Permission denied".to_owned()),
+                partial: false,
             }],
             locked: Vec::new(),
         }],

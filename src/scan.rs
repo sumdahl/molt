@@ -46,6 +46,9 @@ pub struct Item {
     pub outcome: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// Something inside was kept: a locked folder or a mount (LF-01, SD-07).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub partial: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -55,17 +58,45 @@ pub struct SkipEntry {
     pub reason: String,
 }
 
+/// A dry-run measurement of some rules, with the candidates it measured, so that a live run
+/// acts on exactly what was shown (P-14, CN-09).
+#[derive(Debug)]
+pub struct Survey {
+    pub report: ScanReport,
+    /// Each match with the outcome its dry run had.
+    pub measured: Vec<(Match, Outcome)>,
+}
+
 /// Matches the enabled rules and measures them without changing anything (SC-01).
 pub fn scan(startup: &Startup) -> Result<ScanReport, PlanRefused> {
+    survey(&startup.rules, startup, None).map(|survey| survey.report)
+}
+
+/// Matches `rules` and measures them with a safe-delete dry run. `mode` overrides every
+/// rule's mode (CN-10).
+pub fn survey(
+    rules: &[Rule],
+    startup: &Startup,
+    mode: Option<Mode>,
+) -> Result<Survey, PlanRefused> {
     let env = &startup.env;
-    let findings = rules::find(&startup.rules, &env.dirs, &env.search_path);
+    let mut findings = rules::find(rules, &env.dirs, &env.search_path);
+    if let Some(mode) = mode {
+        findings
+            .matches
+            .iter_mut()
+            .for_each(|found| found.mode = mode);
+    }
     let (outcomes, locked) = measure(&findings.matches, &env.context(&startup.config))?;
 
-    let mut rules: Vec<RuleReport> = startup.rules.iter().map(RuleReport::new).collect();
-    for (found, outcome) in findings.matches.iter().zip(outcomes) {
-        if let Some(rule) = rules.iter_mut().find(|rule| rule.id == found.rule) {
+    let mut reports: Vec<RuleReport> = rules.iter().map(RuleReport::new).collect();
+    if let Some(mode) = mode {
+        reports.iter_mut().for_each(|rule| rule.mode = mode);
+    }
+    for (found, outcome) in findings.matches.iter().zip(&outcomes) {
+        if let Some(rule) = reports.iter_mut().find(|rule| rule.id == found.rule) {
             let path = found.candidate.path();
-            rule.add(path, outcome);
+            rule.add(path, *outcome);
             rule.locked.extend(
                 locked
                     .iter()
@@ -75,21 +106,21 @@ pub fn scan(startup: &Startup) -> Result<ScanReport, PlanRefused> {
         }
     }
     // SC-03: rules with no matches are left out.
-    rules.retain(|rule| !rule.items.is_empty());
-    sort_largest_first(&mut rules);
+    reports.retain(|rule| !rule.items.is_empty());
+    sort_largest_first(&mut reports);
 
     let unreadable = findings
         .skipped
         .iter()
         .any(|skip| matches!(skip.reason, SkipReason::Unreadable(_)));
-    let failed = rules
+    let failed = reports
         .iter()
         .flat_map(|rule| &rule.items)
         .any(|item| item.outcome == "failed");
-    Ok(ScanReport {
-        total: rules.iter().map(|rule| rule.bytes).sum(),
+    let report = ScanReport {
+        total: reports.iter().map(|rule| rule.bytes).sum(),
         partial: unreadable || failed,
-        rules,
+        rules: reports,
         skipped: findings
             .skipped
             .into_iter()
@@ -100,6 +131,10 @@ pub fn scan(startup: &Startup) -> Result<ScanReport, PlanRefused> {
             })
             .collect(),
         inactive: findings.inactive,
+    };
+    Ok(Survey {
+        report,
+        measured: findings.matches.into_iter().zip(outcomes).collect(),
     })
 }
 
@@ -178,22 +213,22 @@ impl RuleReport {
 }
 
 impl Item {
-    fn new(path: &Path, outcome: Outcome) -> Self {
-        let (bytes, outcome, reason) = match outcome {
-            Outcome::WouldRemove { bytes, .. } => (bytes, "would-remove", None),
-            Outcome::WouldTrash { bytes } => (bytes, "would-trash", None),
-            // A dry run never removes; listed for completeness.
-            Outcome::Removed { bytes, .. } => (bytes, "removed", None),
-            Outcome::Trashed { bytes } => (bytes, "trashed", None),
+    pub(crate) fn new(path: &Path, outcome: Outcome) -> Self {
+        let (bytes, outcome, reason, partial) = match outcome {
+            Outcome::WouldRemove { bytes, partial } => (bytes, "would-remove", None, partial),
+            Outcome::WouldTrash { bytes } => (bytes, "would-trash", None, false),
+            Outcome::Removed { bytes, partial } => (bytes, "removed", None, partial),
+            Outcome::Trashed { bytes } => (bytes, "trashed", None, false),
             // SC-02: what safe delete would skip isn't counted.
-            Outcome::Skipped(reason) => (0, "skipped", Some(reason.to_string())),
-            Outcome::Failed { errno, .. } => (0, "failed", Some(errno.to_string())),
+            Outcome::Skipped(reason) => (0, "skipped", Some(reason.to_string()), false),
+            Outcome::Failed { errno, bytes } => (bytes, "failed", Some(errno.to_string()), false),
         };
         Self {
             path: path.to_string_lossy().into_owned(),
             bytes,
             outcome,
             reason,
+            partial,
         }
     }
 }
@@ -244,6 +279,10 @@ impl fmt::Display for ScanReport {
                 write!(f, "  {:<42}{:>10}", rule.name, human_size(rule.bytes))?;
                 if !rule.clean_with.is_empty() {
                     write!(f, "  via `{}`", rule.clean_with.join(" "))?;
+                }
+                // CN-04: say when items go to the trash rather than being deleted.
+                if rule.mode == Mode::Trash {
+                    write!(f, "  (to trash)")?;
                 }
                 // SC-02, LF-06
                 for outcome in ["skipped", "failed"] {

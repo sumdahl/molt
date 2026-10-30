@@ -202,6 +202,16 @@ paths = ["~/junk/*"]
 clean_with = ["junk-tool", "clean"]
 "#;
 
+/// `JUNK_RULE` without an owning-tool command, so `clean` deletes its files itself.
+const PLAIN_JUNK_RULE: &str = r#"
+[[rule]]
+id = "junk"
+name = "Test junk"
+category = "apps"
+kind = "regenerable"
+paths = ["~/junk/*"]
+"#;
+
 const LOCKED_RULE: &str = r#"
 [[rule]]
 id = "locked"
@@ -444,4 +454,374 @@ fn sc_09_no_command_runs_scan() {
         home.molt(&["--json"], &[]).stdout,
         home.molt(&["scan", "--json"], &[]).stdout
     );
+}
+
+// molt clean (specs/006-clean.md)
+
+/// A fake tool in `<home>/../bin`: a shell script that records each run in `<name>.ran`.
+fn fake_tool(home: &Home, name: &str, exit: i32) -> PathBuf {
+    let bin = home.path.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let tool = bin.join(name);
+    let body = format!(
+        "#!/bin/sh\n/bin/cp \"$MOLT_TEST_STDOUT\" \"{ran}\" 2>/dev/null || /bin/touch \"{ran}\"\nexit {exit}\n",
+        ran = home.path.join(format!("{name}.ran")).display()
+    );
+    fs::write(&tool, body).unwrap();
+    fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+    bin
+}
+
+const TOOL_RULE: &str = r#"
+[[rule]]
+id = "tooled"
+name = "Tool-cleaned cache"
+category = "dev-tools"
+kind = "regenerable"
+paths = ["~/tooled"]
+clean_with = ["fake-clean", "--all"]
+requires = ["fake-clean"]
+"#;
+
+impl Home {
+    fn clean(&self, args: &[&str]) -> Output {
+        let mut all = vec!["clean"];
+        all.extend_from_slice(args);
+        self.molt(&all, &[])
+    }
+
+    /// Runs molt in a pseudo-terminal (via `script`), typing `input`. `None` if `script`
+    /// isn't installed.
+    fn molt_tty(&self, args: &str, input: &str) -> Option<Output> {
+        let script = Path::new("/usr/bin/script");
+        if !script.exists() {
+            return None;
+        }
+        let command = format!("{} {args}", env!("CARGO_BIN_EXE_molt"));
+        let mut child = Command::new(script)
+            .args(["-qec", &command, "/dev/null"])
+            .env_clear()
+            .env("PATH", "")
+            .env("HOME", &self.path)
+            .env("XDG_CONFIG_HOME", self.path.join(".config"))
+            .env("XDG_CACHE_HOME", self.path.join(".cache"))
+            .env("XDG_DATA_HOME", self.path.join(".local/share"))
+            .env("XDG_STATE_HOME", self.path.join(".local/state"))
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        use std::io::Write;
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+        Some(child.wait_with_output().unwrap())
+    }
+}
+
+fn stdout(out: &Output) -> String {
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+#[test]
+fn cn_01_cn_11_yes_cleans_what_the_preview_shows() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.rules(PLAIN_JUNK_RULE);
+    home.config("whitelist = [\"~/junk/keep\"]");
+    let a = home.file("junk/a", 64 * 1024);
+    let keep = home.file("junk/keep", 4096);
+    home.file(".cache/thumbnails/t.png", 4096);
+
+    let out = home.clean(&["--yes"]);
+
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(!exists(&a) && !exists(&home.path.join(".cache/thumbnails")));
+    assert!(exists(&keep));
+    let text = stdout(&out);
+    assert!(text.contains("Freed"), "{text}");
+}
+
+fn exists(path: &Path) -> bool {
+    fs::symlink_metadata(path).is_ok()
+}
+
+#[test]
+fn cn_02_only_and_skip_narrow_the_run_and_unknown_ids_are_usage_errors() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.rules(PLAIN_JUNK_RULE);
+    let a = home.file("junk/a", 4096);
+    let thumbs = home.file(".cache/thumbnails/t.png", 4096);
+
+    assert_eq!(
+        home.clean(&["--yes", "--only", "nope"]).status.code(),
+        Some(2)
+    );
+    assert!(exists(&a) && exists(&thumbs));
+    assert_eq!(
+        home.clean(&["--yes", "--skip", "nope"]).status.code(),
+        Some(2)
+    );
+
+    assert!(home.clean(&["--yes", "--skip", "junk"]).status.success());
+    assert!(exists(&a) && !exists(&thumbs));
+    assert!(home.clean(&["--yes", "--only", "junk"]).status.success());
+    assert!(!exists(&a));
+}
+
+#[test]
+fn cn_03_rules_whose_programs_are_running_are_left_out() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.rules(
+        &PLAIN_JUNK_RULE.replace("paths = [", "processes = [\"molt-busy-test\"]\npaths = ["),
+    );
+    let a = home.file("junk/a", 4096);
+    let busy = home.path.join("molt-busy-test");
+    fs::copy("/usr/bin/sleep", &busy).unwrap();
+    let mut program = Command::new(&busy).arg("30").spawn().unwrap();
+
+    let out = home.clean(&["--yes"]);
+    program.kill().unwrap();
+    program.wait().unwrap();
+
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(exists(&a));
+    assert!(stdout(&out).contains("molt-busy-test"), "{}", stdout(&out));
+}
+
+#[test]
+fn cn_04_cn_08_the_preview_is_printed_before_the_first_change() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.rules(TOOL_RULE);
+    home.file("tooled/x", 4096);
+    let bin = fake_tool(&home, "fake-clean", 0);
+    let captured = home.path.join("stdout.txt");
+
+    let status = Command::new(env!("CARGO_BIN_EXE_molt"))
+        .args(["clean", "--yes"])
+        .env_clear()
+        .env("HOME", &home.path)
+        .env("PATH", &bin)
+        .env("MOLT_TEST_STDOUT", &captured)
+        .stdout(fs::File::create(&captured).unwrap())
+        .status()
+        .unwrap();
+
+    assert!(status.success());
+    let seen = fs::read_to_string(home.path.join("fake-clean.ran")).unwrap();
+    assert!(
+        seen.contains("Tool-cleaned cache") && seen.contains("fake-clean --all"),
+        "{seen}"
+    );
+    assert!(
+        !seen.contains("Freed"),
+        "the tool ran after the result:\n{seen}"
+    );
+    assert!(
+        exists(&home.path.join("tooled/x")),
+        "molt must not delete a tool's files"
+    );
+}
+
+#[test]
+fn cn_05_no_means_nothing_and_no_terminal_needs_yes() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.file(".cache/thumbnails/t.png", 4096);
+    let before = snapshot(&home.path);
+
+    let piped = home.clean(&[]);
+    assert_eq!(piped.status.code(), Some(1));
+    assert!(
+        stdout(&piped).contains("Thumbnail cache"),
+        "the preview is still shown"
+    );
+    assert!(stderr(&piped).contains("--yes"), "{}", stderr(&piped));
+    assert_eq!(snapshot(&home.path), before);
+
+    let Some(no) = home.molt_tty("clean", "n\n") else {
+        return eprintln!("skipped the terminal half: script(1) isn't installed");
+    };
+    assert_eq!(no.status.code(), Some(0), "{}", stdout(&no));
+    assert!(stdout(&no).contains("Nothing changed"), "{}", stdout(&no));
+    assert_eq!(snapshot(&home.path), before);
+
+    let yes = home.molt_tty("clean", "y\n").unwrap();
+    assert_eq!(yes.status.code(), Some(0), "{}", stdout(&yes));
+    assert!(!exists(&home.path.join(".cache/thumbnails")));
+}
+
+#[test]
+fn cn_06_lf_05_locked_folders_need_their_own_consent() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.rules(PLAIN_JUNK_RULE);
+    let pkg = home.path.join("junk/build/pkg");
+    home.file("junk/build/pkg/x", 4096);
+    home.file("junk/build/src", 4096);
+    fs::set_permissions(&pkg, fs::Permissions::from_mode(0o111)).unwrap();
+
+    let yes_only = home.clean(&["--yes"]);
+    let mode = fs::symlink_metadata(&pkg).unwrap().mode() & 0o7777;
+    assert_eq!(yes_only.status.code(), Some(3), "kept folders are partial");
+    assert_eq!(mode, 0o111, "--yes alone is not consent");
+    assert!(!exists(&home.path.join("junk/build/src")));
+
+    let consent = home.clean(&["--yes", "--fix-permissions"]);
+    assert_eq!(consent.status.code(), Some(0), "{}", stderr(&consent));
+    assert!(!exists(&home.path.join("junk/build")));
+}
+
+#[test]
+fn cn_07_a_dry_run_shows_the_preview_and_changes_nothing() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.rules(TOOL_RULE);
+    home.file("tooled/x", 4096);
+    home.file(".cache/thumbnails/t.png", 4096);
+    let bin = fake_tool(&home, "fake-clean", 0);
+    let before = snapshot(&home.path);
+    let path = bin.to_str().unwrap();
+
+    let flag = home.molt(&["clean", "--dry-run", "--yes"], &[("PATH", path)]);
+    let env = home.molt(
+        &["clean", "--yes"],
+        &[("PATH", path), ("MOLT_DRY_RUN", "1")],
+    );
+
+    assert!(flag.status.success() && env.status.success());
+    assert!(stdout(&flag).contains("Thumbnail cache"));
+    assert!(
+        stderr(&env).contains("MOLT_DRY_RUN") && stderr(&env).contains("--live"),
+        "{}",
+        stderr(&env)
+    );
+    assert!(
+        !exists(&home.path.join("fake-clean.ran")),
+        "a dry run never runs a tool"
+    );
+    assert_eq!(snapshot(&home.path), before);
+}
+
+#[test]
+fn cn_08_a_failing_tool_is_reported_and_its_files_are_left_alone() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.rules(TOOL_RULE);
+    let x = home.file("tooled/x", 4096);
+    let bin = fake_tool(&home, "fake-clean", 1);
+
+    let out = home.molt(
+        &["clean", "--yes", "--json"],
+        &[("PATH", bin.to_str().unwrap())],
+    );
+
+    assert_eq!(out.status.code(), Some(3));
+    assert!(exists(&x));
+    let last = stdout(&out).lines().last().unwrap().to_owned();
+    let result: serde_json::Value = serde_json::from_str(&last).unwrap();
+    let rule = &result["result"]["rules"][0];
+    assert_eq!(rule["id"], "tooled");
+    assert_eq!(rule["ok"], false);
+    assert_eq!(rule["command"]["exit"], 1);
+}
+
+#[test]
+fn cn_09_anything_changed_since_the_preview_is_skipped() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.rules(&(TOOL_RULE.to_owned() + PLAIN_JUNK_RULE));
+    home.file("tooled/x", 4096);
+    let a = home.file("junk/a", 4096);
+    // The tool runs before deletions (CN-09) and replaces junk/a with a new file.
+    let bin = home.path.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let tool = bin.join("fake-clean");
+    fs::write(
+        &tool,
+        format!(
+            "#!/bin/sh\n/bin/mv \"{a}\" \"{a}.old\" && echo new > \"{a}\"\n",
+            a = a.display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let out = home.molt(&["clean", "--yes"], &[("PATH", bin.to_str().unwrap())]);
+
+    assert_eq!(out.status.code(), Some(3), "{}", stdout(&out));
+    assert_eq!(
+        fs::read_to_string(&a).unwrap(),
+        "new\n",
+        "the replacement must survive"
+    );
+}
+
+#[test]
+fn cn_10_permanent_and_trash_override_the_mode() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.rules(PLAIN_JUNK_RULE);
+    home.file("junk/a", 4096);
+
+    assert_eq!(
+        home.clean(&["--yes", "--trash", "--permanent"])
+            .status
+            .code(),
+        Some(2)
+    );
+    let out = home.clean(&["--yes", "--trash"]);
+
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("trash"), "{}", stdout(&out));
+    assert!(exists(&home.path.join(".local/share/Trash/files/a")));
+}
+
+#[test]
+fn cn_12_tool_commands_are_logged() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.rules(TOOL_RULE);
+    home.file("tooled/x", 4096);
+    let bin = fake_tool(&home, "fake-clean", 0);
+
+    assert!(
+        home.molt(&["clean", "--yes"], &[("PATH", bin.to_str().unwrap())])
+            .status
+            .success()
+    );
+
+    let log = fs::read_to_string(home.path.join(".local/state/molt/operations.log")).unwrap();
+    let entry: serde_json::Value = serde_json::from_str(log.lines().next().unwrap()).unwrap();
+    assert_eq!(entry["command"], serde_json::json!(["fake-clean", "--all"]));
+    assert_eq!(entry["exit"], 0);
 }
