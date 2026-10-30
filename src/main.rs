@@ -25,7 +25,8 @@ use onyx::uninstall::{self, AppName};
 
 /// Reclaim disk space on Linux, safely.
 #[derive(Parser)]
-#[command(version, about)]
+// PK-07: the crate is `onyx-cli`; the command is `onyx`.
+#[command(name = "onyx", version, about)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,

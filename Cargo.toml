@@ -1,12 +1,33 @@
 [package]
-name = "onyx"
+# PK-07: `onyx` is taken on crates.io; the library and the command keep the name.
+name = "onyx-cli"
 version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
-description = "Reclaim disk space on Linux, safely"
+description = "Reclaim disk space on Linux, safely: a disk cleaner that dry-runs first"
 license = "MIT"
 repository = "https://github.com/sumdahl/onyx"
-publish = false
+readme = "README.md"
+keywords = ["disk", "cleaner", "cache", "linux", "cli"]
+categories = ["command-line-utilities", "filesystem"]
+# The built-in rules and (SE-09) the release signers are built into onyx.
+include = [
+    "/src/",
+    "/rules/builtin.toml",
+    "/Cargo.toml",
+    "/Cargo.lock",
+    "/README.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+    "/.github/allowed_signers",
+]
+
+[lib]
+name = "onyx"
+
+[[bin]]
+name = "onyx"
+path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
