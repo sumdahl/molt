@@ -7,7 +7,7 @@ use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::safe_delete::{Candidate, Errno, Mode};
 
@@ -15,11 +15,11 @@ use crate::safe_delete::{Candidate, Errno, Mode};
 mod tests;
 
 /// A rule's id: lowercase ASCII letters, digits and `-` (RE-03).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(try_from = "String")]
 pub struct RuleId(String);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Category {
     DevTools,
@@ -205,6 +205,15 @@ pub enum SkipReason {
     Symlink,
     /// RE-09: a directory on the way couldn't be listed.
     Unreadable(Errno),
+}
+
+impl fmt::Display for SkipReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Symlink => f.write_str("symlink"),
+            Self::Unreadable(errno) => write!(f, "unreadable: {errno}"),
+        }
+    }
 }
 
 #[derive(Debug)]

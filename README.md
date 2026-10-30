@@ -4,9 +4,25 @@ Reclaim disk space on Linux, safely.
 
 molt finds what is filling your disk (caches, build artifacts, old packages, installers, leftovers from removed apps), shows you exactly what it would remove, and removes only what it can prove is safe to remove. It works on any Linux distribution, with extra rules for pacman, apt, dnf, zypper, flatpak and snap.
 
-> **Status: pre-release.** The foundation and specs are in place; cleaning commands are being built spec-first. Nothing in this version deletes files.
+> **Status: pre-release.** `molt scan` works and only reads. The commands that clean are being built spec-first. Nothing in this version deletes files.
 
-## Planned commands
+## Commands
+
+`molt scan` (or just `molt`) shows how much space molt could free, by category, without changing anything:
+
+```text
+$ molt scan
+Developer tools                               21.3 GiB
+  npm download cache                          21.0 GiB  via `npm cache clean --force`
+System (your files)                            1.2 GiB
+  Thumbnail cache                              1.2 GiB
+
+Total: 22.5 GiB can be freed with `molt clean`.
+```
+
+`molt scan --json` prints every path, its size, and anything skipped and why.
+
+### Planned
 
 | Command | What it does |
 |---|---|

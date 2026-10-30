@@ -2,14 +2,17 @@
 
 use std::process::ExitCode;
 
-use clap::{CommandFactory, Parser};
-use molt::config::{Decision, DryRunCause, Requested};
-use molt::startup;
+use clap::{Parser, Subcommand};
+use molt::config::Requested;
+use molt::scan;
+use molt::startup::{self, Startup};
 
 /// Reclaim disk space on Linux, safely.
 #[derive(Parser)]
 #[command(version, about)]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Command>,
     /// Show what would happen without changing anything.
     #[arg(long, global = true, conflicts_with = "live")]
     dry_run: bool,
@@ -22,6 +25,12 @@ struct Cli {
     /// Machine-readable output.
     #[arg(long, global = true)]
     json: bool,
+}
+
+#[derive(Clone, Copy, Subcommand)]
+enum Command {
+    /// Show how much space molt could free, without changing anything (the default).
+    Scan,
 }
 
 impl Cli {
@@ -38,7 +47,7 @@ fn main() -> ExitCode {
     // P-13: clap exits 2 on bad usage, and 0 for --help and --version.
     let cli = Cli::parse();
     match run(&cli) {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => code,
         Err(error) => {
             // CL-03, CL-09
             eprintln!("molt: {error}");
@@ -50,23 +59,29 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
+fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let startup = startup::start(
         cli.requested(),
         |name| std::env::var_os(name),
         rustix::process::geteuid(),
     )?;
-    // CL-06
-    if let Decision::DryRun(cause @ (DryRunCause::Config | DryRunCause::Environment)) =
-        startup.decision
-    {
-        let source = match cause {
-            DryRunCause::Environment => "MOLT_DRY_RUN=1",
-            _ => "dry_run = true in the config",
-        };
-        eprintln!("molt: dry run because of {source}; pass --live to act");
+    // SC-09
+    match cli.command.unwrap_or(Command::Scan) {
+        Command::Scan => run_scan(cli, &startup),
     }
-    // No commands yet (005 adds scan), so show what molt accepts.
-    Cli::command().print_help()?;
-    Ok(())
+}
+
+fn run_scan(cli: &Cli, startup: &Startup) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let report = scan::scan(startup)?;
+    if cli.json {
+        println!("{}", serde_json::to_string(&report)?);
+    } else {
+        print!("{report}");
+    }
+    // SC-07, P-13
+    Ok(if report.partial {
+        ExitCode::from(3)
+    } else {
+        ExitCode::SUCCESS
+    })
 }

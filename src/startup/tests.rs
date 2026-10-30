@@ -209,3 +209,33 @@ fn cl_08_bad_config_rules_or_dry_run_value_stop_startup() {
     ));
     assert!(home.start(&[]).is_ok());
 }
+
+#[test]
+fn cl_06_the_dry_run_notice_names_its_cause_and_how_to_act() {
+    use DryRunCause as C;
+    let env = dry_run_notice(Decision::DryRun(C::Environment)).unwrap();
+    let config = dry_run_notice(Decision::DryRun(C::Config)).unwrap();
+
+    assert!(
+        env.contains("MOLT_DRY_RUN") && env.contains("--live"),
+        "{env}"
+    );
+    assert!(
+        config.contains("config") && config.contains("--live"),
+        "{config}"
+    );
+    assert_eq!(dry_run_notice(Decision::DryRun(C::Flag)), None);
+    assert_eq!(dry_run_notice(Decision::Live), None);
+}
+
+#[test]
+fn sc_10_requires_looks_only_in_absolute_path_entries() {
+    let with_path = env(&[("HOME", "/h"), ("PATH", "/usr/bin:bin::./tools:/opt/x/bin")]).unwrap();
+    let without_path = env(&[("HOME", "/h")]).unwrap();
+
+    assert_eq!(
+        with_path.search_path,
+        [PathBuf::from("/usr/bin"), PathBuf::from("/opt/x/bin")]
+    );
+    assert!(without_path.search_path.is_empty());
+}

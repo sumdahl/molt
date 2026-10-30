@@ -14,3 +14,4 @@ The release workflow publishes the section matching the pushed tag as the GitHub
 - Config file `~/.config/molt/config.toml` (`dry_run`, `whitelist`, `disabled_rules`, `purge_paths`) and user rule files in `~/.config/molt/rules/`. molt stops if either can't be read exactly.
 - `MOLT_DRY_RUN=1` and `dry_run = true` make every run a dry run unless `--live` is given. `MOLT_NO_OPLOG=1` turns off the operation log.
 - molt refuses to run as root.
+- `molt scan` (also `molt` with no command): shows how much space could be freed, by category and rule, without changing anything. `--json` lists every path. The sizes come from the same dry run `clean` will use, so whitelisted and protected paths are never counted. Exit code 3 if some folder couldn't be read.
