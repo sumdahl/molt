@@ -55,4 +55,4 @@ What this spec deliberately leaves out.
 | 004 | [CLI skeleton](004-cli.md) | CL | Implemented |
 | 005 | [`molt scan`](005-scan.md) | SC | Implemented |
 | 010 | [Built-in rules](010-built-in-rules.md) | BR | Implemented |
-| 011 | [Locked folders](011-locked-folders.md) | LF | Draft |
+| 011 | [Locked folders](011-locked-folders.md) | LF | Accepted |

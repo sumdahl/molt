@@ -1,6 +1,6 @@
 # 011: Locked folders
 
-Status: Draft
+Status: Accepted
 Prefix: LF
 
 ## Goal
@@ -21,7 +21,7 @@ A plan carries a **permission choice**: `keep` (the default) or `fix-owned`. Onl
 ## Requirements
 
 ### Finding
-- **LF-01** When safe delete meets a locked folder, it keeps the folder and everything inside it, carries on with the rest of the candidate, and lists the folder in the report. The candidate's outcome is partial, as for a mount (SD-07). This holds in a dry run and in a live run with `keep`.
+- **LF-01** When safe delete meets a locked folder, it keeps the folder and everything inside it, carries on with the rest of the candidate, and lists the folder in the report. The candidate's outcome is partial, as for a mount (SD-07). This holds in a dry run and in a live run with `keep`. In trash mode the whole candidate is moved, locked folders included (a rename doesn't need to read inside), and the folders are still listed, since their size is unknown.
 - **LF-02** A folder that can't be listed and is owned by someone else stops the candidate with `EACCES`, as now (SD-14). It is never changed.
 
 ### Fixing
@@ -42,7 +42,7 @@ A plan carries a **permission choice**: `keep` (the default) or `fix-owned`. Onl
 - LF-03's swap is tested with the SD-09 hook: swap the locked folder for a symlink to an outside folder before the change, and check the outside folder's mode is unchanged.
 - LF-05 is tested on `clean` (006, #6). Here, only that `keep` never changes a mode.
 
-## Open questions
+## Decisions
 
-- **Consent once per run, or per folder?** (Proposal: once per run, listing every folder. Asking about dozens of `pkg` folders one by one helps no one.)
-- **Live run without consent.** LF-01 removes everything else and keeps the locked folders (partial). Should it instead skip the whole candidate? (Proposal: partial. It frees what it can, and the next run with consent finishes the job.)
+- **Consent is asked once per run**, after the P-14 preview, listing every locked folder.
+- **A live run without consent is partial** (LF-01): it removes the rest and keeps the locked folders. A later run with consent finishes the job.
