@@ -19,9 +19,12 @@ pub use rustix::io::Errno;
 use rustix::path::Arg;
 
 mod oplog;
+mod swap;
 #[cfg(test)]
 pub(crate) mod tests;
 mod trash;
+
+pub use swap::swap_in;
 
 /// What a scan saw at a path, rechecked right before removal (SD-08, SD-10).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
