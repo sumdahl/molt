@@ -11,21 +11,21 @@ use tempfile::TempDir;
 fn cn_03_running_programs_are_found_by_short_and_long_names() {
     let dir = TempDir::new().unwrap();
     // Longer than the 15 bytes the kernel keeps in `comm`.
-    let long = dir.path().join("molt-test-program-with-a-long-name");
+    let long = dir.path().join("onyx-test-program-with-a-long-name");
     // A copy of `sh` blocked on a builtin: a multicall `sleep` would exit at once under
     // an unknown name, leaving a zombie with an empty cmdline.
     fs::copy("/bin/sh", &long).unwrap();
     fs::set_permissions(&long, fs::Permissions::from_mode(0o755)).unwrap();
     let mut child = spawn_fresh_copy(Command::new(&long).args(["-c", "read line"]));
-    wait_for_exec(child.id(), "molt-test-progr");
+    wait_for_exec(child.id(), "onyx-test-progr");
 
     let names = running();
     child.kill().unwrap();
     child.wait().unwrap();
 
-    assert!(names.contains("molt-test-program-with-a-long-name"));
-    assert!(names.contains("molt-test-progr"), "comm is cut to 15 bytes");
-    assert!(!running().contains("molt-test-program-with-a-long-name"));
+    assert!(names.contains("onyx-test-program-with-a-long-name"));
+    assert!(names.contains("onyx-test-progr"), "comm is cut to 15 bytes");
+    assert!(!running().contains("onyx-test-program-with-a-long-name"));
 }
 
 /// Spawns a just-copied binary. Another test thread's fork may briefly hold the copy's

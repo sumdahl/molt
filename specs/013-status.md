@@ -1,11 +1,11 @@
-# 013: `molt status`
+# 013: `onyx status`
 
 Status: Implemented
 Prefix: ST
 
 ## Goal
 
-`molt status` shows the machine's health at a glance: CPU, memory, disks and stuck processes. Everything comes from `/proc` and `/sys`, read without root, and nothing is changed. It covers the one-shot snapshot (#36), hardware readings and a health score (#37), and the live view (#38).
+`onyx status` shows the machine's health at a glance: CPU, memory, disks and stuck processes. Everything comes from `/proc` and `/sys`, read without root, and nothing is changed. It covers the one-shot snapshot (#36), hardware readings and a health score (#37), and the live view (#38).
 
 ## Non-goals
 
@@ -15,12 +15,12 @@ Prefix: ST
 
 ## Requirements
 
-- **ST-01** `molt status` reads only `/proc` and `/sys` (and `statvfs` for disks), never runs another program, never needs root, and changes nothing. `--dry-run` is accepted and makes no difference (P-05).
+- **ST-01** `onyx status` reads only `/proc` and `/sys` (and `statvfs` for disks), never runs another program, never needs root, and changes nothing. `--dry-run` is accepted and makes no difference (P-05).
 - **ST-02** **CPU**: the number of CPUs online, the load averages (1, 5, 15 minutes, `/proc/loadavg`), and how busy the CPUs were over a 200 ms sample (`/proc/stat`, the share of non-idle time), plus the uptime.
 - **ST-03** **Memory**: total, available and used (`MemTotal − MemAvailable`) from `/proc/meminfo`, and swap total and used. No swap is shown as "none".
 - **ST-04** **Disks**: each mounted filesystem backed by a device or a network share, from `/proc/self/mounts`: mount point, filesystem type, size, used, free for an unprivileged user (`statvfs` `f_bavail`), and the used share (rounded up in the text, as `df` does). Pseudo filesystems (`proc`, `sysfs`, `tmpfs`, `cgroup`, `overlay`, `squashfs` and the like) are left out, and so are bind mounts that repeat a device already listed (the one with the shortest mount point is kept). A filesystem that can't be measured (`statvfs` fails, e.g. a dead network share) is listed as unavailable, never waited on for more than 1 second.
 - **ST-05** **Processes**: how many there are, how many are running, and every zombie (state `Z` in `/proc/<pid>/stat`) with its pid, name and parent pid, as zombies mean a parent that isn't reaping its children.
-- **ST-06** The text output has one section per area, in the order above, with sizes as SC-04. A disk at 90 % or more is marked `(nearly full)`, and the line points at `molt analyze <mount point>`.
+- **ST-06** The text output has one section per area, in the order above, with sizes as SC-04. A disk at 90 % or more is marked `(nearly full)`, and the line points at `onyx analyze <mount point>`.
 - **ST-07** `--json` prints one object with `cpu`, `memory`, `disks` and `processes`, sizes in bytes, shares as numbers from 0 to 100. A field the machine doesn't report is left out, not zero.
 - **ST-08** The exit code is 0, also with nearly full disks: `status` reports, it doesn't judge (P-13 leaves 3 for partial actions).
 
@@ -43,10 +43,10 @@ Prefix: ST
 
 ### Live view (#38)
 
-- **ST-15** `molt status --watch` shows the same report full screen and refreshes it every 2 seconds, until `q` or Ctrl-C. `--interval <seconds>` (1 to 60) changes the period. The CPU, disk and network rates are measured over the whole period instead of 200 ms, so they're steadier.
+- **ST-15** `onyx status --watch` shows the same report full screen and refreshes it every 2 seconds, until `q` or Ctrl-C. `--interval <seconds>` (1 to 60) changes the period. The CPU, disk and network rates are measured over the whole period instead of 200 ms, so they're steadier.
 - **ST-16** It uses the same terminal code as the `analyze` browser (AN-15, AN-16): raw mode through `rustix`, the alternate screen, the terminal always restored, redrawn to fit the window, and long lines cut to its width.
 - **ST-17** Keys: `q` or Ctrl-C quit, `p` pauses and resumes (the screen says "paused"), and `r` refreshes now.
-- **ST-18** `--watch` needs a terminal on stdin and stdout. Without one, or with `--json`, it's a usage error (exit 2) naming why; `molt status --json` stays the way to poll from a script.
+- **ST-18** `--watch` needs a terminal on stdin and stdout. Without one, or with `--json`, it's a usage error (exit 2) naming why; `onyx status --json` stays the way to poll from a script.
 - **ST-19** The view only reads, like the snapshot (ST-01).
 
 ## Test strategy

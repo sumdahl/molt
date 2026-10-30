@@ -12,7 +12,7 @@ fn euid() -> Uid {
 #[test]
 fn se_05_the_new_file_takes_the_place_and_the_old_one_moves_aside() {
     let dir = tempfile::tempdir().unwrap();
-    let target = dir.path().join("molt");
+    let target = dir.path().join("onyx");
     let new = dir.path().join("new");
     fs::write(&target, "old").unwrap();
     fs::write(&new, "new").unwrap();

@@ -36,8 +36,8 @@ Matching produces **matches**: `(rule id, candidate, mode)`. The mode comes from
 ## Requirements
 
 ### Loading
-- **RE-01** The built-in rules are compiled into the binary. User rules are read from `$XDG_CONFIG_HOME/molt/rules/*.toml`, in name order.
-- **RE-02** If a user rule file exists but can't be read or parsed, loading fails and molt stops before anything is deleted (P-03). The error names the file, and the line where there is one.
+- **RE-01** The built-in rules are compiled into the binary. User rules are read from `$XDG_CONFIG_HOME/onyx/rules/*.toml`, in name order.
+- **RE-02** If a user rule file exists but can't be read or parsed, loading fails and onyx stops before anything is deleted (P-03). The error names the file, and the line where there is one.
 - **RE-03** Unknown fields, missing required fields, and invalid values (an unknown `kind` or `category`, a bad `id`) are errors, not warnings.
 - **RE-04** Two rules with the same `id` are an error, whether both are user rules or one is built in.
 

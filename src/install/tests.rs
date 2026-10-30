@@ -17,7 +17,7 @@ fn se_01_versions_compare_as_numbers() {
 fn se_02_the_built_in_signers_name_the_maintainer_for_releases() {
     assert_eq!(principals(SIGNERS), ["sumdahl"]);
     assert!(
-        SIGNERS.contains("molt-release"),
+        SIGNERS.contains("onyx-release"),
         "the key may sign releases"
     );
     assert_eq!(principals("# c\n\na x y\nb z w\n"), ["a", "b"]);
@@ -26,7 +26,7 @@ fn se_02_the_built_in_signers_name_the_maintainer_for_releases() {
 #[test]
 fn se_02_the_checksum_must_name_exactly_this_file() {
     let hash = "a".repeat(64);
-    let tarball = "molt-v1.0.0-x86_64-unknown-linux-musl.tar.gz";
+    let tarball = "onyx-v1.0.0-x86_64-unknown-linux-musl.tar.gz";
     assert!(names_only(&format!("{hash}  {tarball}\n"), tarball));
     assert!(names_only(&format!("{hash} *{tarball}\n"), tarball));
     assert!(!names_only(&format!("{hash}  other.tar.gz\n"), tarball));
@@ -39,8 +39,8 @@ fn se_02_the_checksum_must_name_exactly_this_file() {
 
 #[test]
 fn se_02_only_plain_files_inside_the_top_folder_pass() {
-    let top = "molt-v1.0.0-x86_64-unknown-linux-musl";
-    let names = format!("{top}/\n{top}/molt\n{top}/README.md\n");
+    let top = "onyx-v1.0.0-x86_64-unknown-linux-musl";
+    let names = format!("{top}/\n{top}/onyx\n{top}/README.md\n");
     let long = "drwxr-xr-x a/b 0 x\n-rwxr-xr-x a/b 9 x\n-rw-r--r-- a/b 1 x\n";
     assert!(entries_are_safe(&names, long, top));
     let link = long.replace("-rw-r--r--", "lrwxrwxrwx");

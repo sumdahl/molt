@@ -1,5 +1,5 @@
 //! Startup (specs/004-cli.md): everything that runs before a command, in order. Any
-//! failure stops molt before the command runs.
+//! failure stops onyx before the command runs.
 
 use std::ffi::OsString;
 use std::fmt;
@@ -16,9 +16,9 @@ mod tests;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Environment {
     pub dirs: Dirs,
-    /// `None` when `MOLT_NO_OPLOG=1`.
+    /// `None` when `ONYX_NO_OPLOG=1`.
     pub oplog: Option<PathBuf>,
-    /// `MOLT_DRY_RUN`, checked by `Config::decide` (CF-07).
+    /// `ONYX_DRY_RUN`, checked by `Config::decide` (CF-07).
     pub dry_run: Option<OsString>,
     /// Absolute `$PATH` entries, where rules look for their tools (SC-10).
     pub search_path: Vec<PathBuf>,
@@ -32,7 +32,7 @@ pub struct Startup {
     pub config: Config,
     /// The rules `scan` and `clean` use.
     pub rules: Vec<Rule>,
-    /// IN-01: the `installers` rules, which only `molt installer` uses.
+    /// IN-01: the `installers` rules, which only `onyx installer` uses.
     pub installers: Vec<Rule>,
     pub decision: Decision,
 }
@@ -74,15 +74,15 @@ pub fn environment(
         state: xdg("XDG_STATE_HOME", ".local/state"),
         home,
     };
-    let oplog = match var("MOLT_NO_OPLOG") {
+    let oplog = match var("ONYX_NO_OPLOG") {
         Some(value) if value == "1" => None,
         Some(value) if value != "0" => return Err(StartupError::BadNoOplog(value)),
-        _ => Some(dirs.state.join("molt/operations.log")),
+        _ => Some(dirs.state.join("onyx/operations.log")),
     };
     Ok(Environment {
         dirs,
         oplog,
-        dry_run: var("MOLT_DRY_RUN"),
+        dry_run: var("ONYX_DRY_RUN"),
         search_path: var("PATH")
             .map(|path| {
                 std::env::split_paths(&path)
@@ -114,10 +114,10 @@ pub fn start(
     euid: Uid,
 ) -> Result<Startup, StartupError> {
     let env = environment(var, euid)?;
-    let molt_config = env.dirs.config.join("molt");
-    let config = config::load(&molt_config.join("config.toml"))?;
+    let onyx_config = env.dirs.config.join("onyx");
+    let config = config::load(&onyx_config.join("config.toml"))?;
     let (installers, rules) = config
-        .enabled_rules(rules::load(&molt_config.join("rules"))?)?
+        .enabled_rules(rules::load(&onyx_config.join("rules"))?)?
         .into_iter()
         .partition(|rule| rule.category == Category::Installers);
     let decision = config.decide(requested, env.dry_run.as_deref())?;
@@ -158,7 +158,7 @@ impl Environment {
 /// its run a dry run. `None` when the user asked for it, or the run is live.
 pub fn dry_run_notice(decision: Decision) -> Option<String> {
     let source = match decision {
-        Decision::DryRun(DryRunCause::Environment) => "MOLT_DRY_RUN=1",
+        Decision::DryRun(DryRunCause::Environment) => "ONYX_DRY_RUN=1",
         Decision::DryRun(DryRunCause::Config) => "dry_run = true in the config",
         Decision::DryRun(DryRunCause::Flag) | Decision::Live => return None,
     };
@@ -180,9 +180,9 @@ impl From<LoadError> for StartupError {
 impl fmt::Display for StartupError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Root => f.write_str("refusing to run as root; run molt as your normal user"),
+            Self::Root => f.write_str("refusing to run as root; run onyx as your normal user"),
             Self::Home(why) => write!(f, "$HOME {why}"),
-            Self::BadNoOplog(value) => write!(f, "MOLT_NO_OPLOG must be 0 or 1, not {value:?}"),
+            Self::BadNoOplog(value) => write!(f, "ONYX_NO_OPLOG must be 0 or 1, not {value:?}"),
             Self::Config(error) => error.fmt(f),
             Self::Rules(error) => error.fmt(f),
         }

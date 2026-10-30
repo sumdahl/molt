@@ -100,7 +100,7 @@ impl Sandbox {
                 .map(|d| home.join(d))
                 .to_vec(),
             whitelist: whitelist.iter().map(|w| home.join(w)).collect(),
-            oplog: Some(home.join(".local/state/molt/operations.log")),
+            oplog: Some(home.join(".local/state/onyx/operations.log")),
             home: home.clone(),
             // The owner of a fresh temp dir is the effective uid (root inside a test namespace).
             euid: Uid::from_raw(fs::metadata(&root).unwrap().uid()),
@@ -335,7 +335,7 @@ pub(crate) fn mount_tmpfs(at: &Path) {
 /// without root. Locally it skips (with a note) where unprivileged user namespaces are
 /// disabled; on CI it fails instead.
 pub(crate) fn in_mount_namespace(filter: &str, body: impl FnOnce()) {
-    if std::env::var_os("MOLT_TEST_IN_NS").is_some() {
+    if std::env::var_os("ONYX_TEST_IN_NS").is_some() {
         return body();
     }
     let unshare = || {
@@ -356,7 +356,7 @@ pub(crate) fn in_mount_namespace(filter: &str, body: impl FnOnce()) {
     let status = unshare()
         .arg(std::env::current_exe().unwrap())
         .args([filter, "--test-threads=1"])
-        .env("MOLT_TEST_IN_NS", "1")
+        .env("ONYX_TEST_IN_NS", "1")
         .status()
         .unwrap();
     assert!(status.success(), "{filter} failed inside the namespace");

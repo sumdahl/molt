@@ -1,4 +1,4 @@
-//! `molt optimize` (specs/015-optimize.md): upkeep through each tool's own command, run
+//! `onyx optimize` (specs/015-optimize.md): upkeep through each tool's own command, run
 //! with `sudo` after the full preview (P-04, P-07, P-14).
 
 use std::fmt;
@@ -132,7 +132,7 @@ impl TaskId {
             Self::AptAutoremove => return invocation(tool, &["autoremove"], &[]),
             Self::DnfAutoremove => &["remove"],
             Self::ZypperUnneeded => &["remove", "--clean-deps"],
-            // OP-13: no --force or -f, and no paths from molt.
+            // OP-13: no --force or -f, and no paths from onyx.
             Self::Fstrim => &["--all", "--verbose"],
             Self::FontCache => &[],
             Self::DnsCache => &["flush-caches"],

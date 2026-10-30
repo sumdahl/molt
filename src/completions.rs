@@ -1,4 +1,4 @@
-//! `molt completions` (specs/018-completions.md): static completion scripts for bash,
+//! `onyx completions` (specs/018-completions.md): static completion scripts for bash,
 //! zsh and fish, generated from clap's own command tree, with no completion crate.
 
 use std::fmt::Write;
@@ -193,8 +193,8 @@ fn bash_branch(out: &mut String, pattern: &str, node: &Node, extra: &str) {
 
 fn bash(tree: &Tree) -> String {
     let mut out = String::from(
-        "# bash completion for molt, made by `molt completions bash`.\n\
-         _molt() {\n\
+        "# bash completion for onyx, made by `onyx completions bash`.\n\
+         _onyx() {\n\
          \x20   local cur=\"${COMP_WORDS[COMP_CWORD]}\" prev=\"${COMP_WORDS[COMP_CWORD-1]}\"\n\
          \x20   local cmd=\"\" flag=\"\" i j\n\
          \x20   for ((i = 1; i < COMP_CWORD; i++)); do\n\
@@ -210,15 +210,15 @@ fn bash(tree: &Tree) -> String {
     for (name, node) in &tree.subcommands {
         bash_branch(&mut out, name, node, "");
     }
-    out.push_str("    esac\n}\ncomplete -o default -F _molt molt\n");
+    out.push_str("    esac\n}\ncomplete -o default -F _onyx onyx\n");
     out
 }
 
 fn zsh(tree: &Tree) -> String {
     let mut out = String::from(
-        "#compdef molt\n\
-         # zsh completion for molt, made by `molt completions zsh`.\n\
-         _molt() {\n\
+        "#compdef onyx\n\
+         # zsh completion for onyx, made by `onyx completions zsh`.\n\
+         _onyx() {\n\
          \x20   local cur=\"${words[CURRENT]}\" prev=\"${words[CURRENT-1]}\"\n\
          \x20   local cmd=\"\" flag=\"\" i j\n\
          \x20   for ((i = 2; i < CURRENT; i++)); do\n\
@@ -252,23 +252,23 @@ fn zsh(tree: &Tree) -> String {
     for (name, node) in &tree.subcommands {
         branch(&mut out, name, node, "");
     }
-    out.push_str("    esac\n}\n_molt \"$@\"\n");
+    out.push_str("    esac\n}\n_onyx \"$@\"\n");
     out
 }
 
 fn fish(tree: &Tree) -> String {
     let mut out = String::from(
-        "# fish completion for molt, made by `molt completions fish`.\ncomplete -c molt -f\n",
+        "# fish completion for onyx, made by `onyx completions fish`.\ncomplete -c onyx -f\n",
     );
     let _ = writeln!(
         out,
-        "complete -c molt -n __fish_use_subcommand -a '{}'",
+        "complete -c onyx -n __fish_use_subcommand -a '{}'",
         tree.names()
     );
     for flag in &tree.root.flags {
         let _ = writeln!(
             out,
-            "complete -c molt -n __fish_use_subcommand -l {}",
+            "complete -c onyx -n __fish_use_subcommand -l {}",
             flag.long
         );
     }
@@ -278,20 +278,20 @@ fn fish(tree: &Tree) -> String {
             let _ = match &flag.values {
                 Some(values) if !values.is_empty() => writeln!(
                     out,
-                    "complete -c molt -n '{when}' -l {} -xa '{}'",
+                    "complete -c onyx -n '{when}' -l {} -xa '{}'",
                     flag.long,
                     values.join(" ")
                 ),
-                Some(_) => writeln!(out, "complete -c molt -n '{when}' -l {} -x", flag.long),
-                None => writeln!(out, "complete -c molt -n '{when}' -l {}", flag.long),
+                Some(_) => writeln!(out, "complete -c onyx -n '{when}' -l {} -x", flag.long),
+                None => writeln!(out, "complete -c onyx -n '{when}' -l {}", flag.long),
             };
         }
         if node.files {
-            let _ = writeln!(out, "complete -c molt -n '{when}' -F");
+            let _ = writeln!(out, "complete -c onyx -n '{when}' -F");
         } else if !node.positional.is_empty() {
             let _ = writeln!(
                 out,
-                "complete -c molt -n '{when}' -a '{}'",
+                "complete -c onyx -n '{when}' -a '{}'",
                 node.positional.join(" ")
             );
         }

@@ -27,7 +27,7 @@ pub enum Category {
     Apps,
     SystemUser,
     Trash,
-    /// 009: only `molt installer` uses these rules.
+    /// 009: only `onyx installer` uses these rules.
     Installers,
 }
 
@@ -429,7 +429,7 @@ impl fmt::Display for RuleId {
 }
 
 impl RuleId {
-    /// An id molt itself defines. `id` must be a literal that satisfies RE-03; each
+    /// An id onyx itself defines. `id` must be a literal that satisfies RE-03; each
     /// caller's ids have a test that checks it.
     pub(crate) fn builtin(id: &'static str) -> Self {
         Self(id.to_owned())

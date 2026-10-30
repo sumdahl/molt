@@ -5,17 +5,17 @@ Prefix: CF
 
 ## Goal
 
-One small TOML file where the user says what molt must never touch, which built-in rules to switch off, where their projects live, and whether molt should only ever preview unless told otherwise. If molt can't read that file exactly, it does nothing (P-03).
+One small TOML file where the user says what onyx must never touch, which built-in rules to switch off, where their projects live, and whether onyx should only ever preview unless told otherwise. If onyx can't read that file exactly, it does nothing (P-03).
 
 ## Non-goals
 
-- Writing the config. molt only reads it; there is no `molt config set`.
+- Writing the config. onyx only reads it; there is no `onyx config set`.
 - Rule definitions. Those are rule files (002).
 - What `purge` does with its roots. That is 008; this spec only reads them.
 
 ## Model
 
-`$XDG_CONFIG_HOME/molt/config.toml`:
+`$XDG_CONFIG_HOME/onyx/config.toml`:
 
 ```toml
 dry_run = true                       # preview only, unless --live (CF-07)
@@ -30,7 +30,7 @@ A **config path** is `~/…` or an absolute path, with no `*`, `?`, `.` or `..` 
 
 ### Loading
 - **CF-01** A missing config file means the defaults: an empty whitelist, no disabled rules, no purge paths, and `dry_run = false`.
-- **CF-02** If the file exists but can't be read or parsed, molt stops before scanning or deleting anything (P-03). The error names the file, and the line where there is one.
+- **CF-02** If the file exists but can't be read or parsed, onyx stops before scanning or deleting anything (P-03). The error names the file, and the line where there is one.
 - **CF-03** Unknown keys and values of the wrong type are errors.
 
 ### Values
@@ -39,9 +39,9 @@ A **config path** is `~/…` or an absolute path, with no `*`, `?`, `.` or `..` 
 - **CF-06** Each `disabled_rules` entry must name a loaded rule. An unknown id is an error, because a typo would leave on a rule the user meant to switch off. Disabled rules are never matched.
 
 ### Dry run by default
-- **CF-07** When `dry_run = true` in the config, or the environment has `MOLT_DRY_RUN=1`, every command runs as a dry run (P-05) unless `--live` is given.
+- **CF-07** When `dry_run = true` in the config, or the environment has `ONYX_DRY_RUN=1`, every command runs as a dry run (P-05) unless `--live` is given.
   - `--dry-run` always means a dry run, whatever the config says.
-  - `MOLT_DRY_RUN` set to anything but `0` or `1` is an error (P-03).
+  - `ONYX_DRY_RUN` set to anything but `0` or `1` is an error (P-03).
   - The decision records why a run is a dry run (flag, config or environment). The CLI (004) rejects `--dry-run` with `--live` as a usage error and tells the user when the config or environment made a run a dry run, and how to act (`--live`).
 
 ## Test strategy

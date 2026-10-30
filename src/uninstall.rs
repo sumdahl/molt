@@ -1,4 +1,4 @@
-//! `molt uninstall` (specs/014-uninstall.md): what an app left in your home, as rules
+//! `onyx uninstall` (specs/014-uninstall.md): what an app left in your home, as rules
 //! built for this one run so it goes through `clean`'s whole path.
 
 use std::fmt;
@@ -30,8 +30,8 @@ const SHARED: [&str; 20] = [
     "ssh",
     "gnupg",
     "pki",
-    // Its log is the record of what molt removed.
-    "molt",
+    // Its log is the record of what onyx removed.
+    "onyx",
 ];
 
 /// An app's name, checked by UN-01 and UN-03, so it names exactly one path per location.

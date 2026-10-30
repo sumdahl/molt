@@ -1,6 +1,6 @@
 # Specs
 
-molt is built spec-first. Code exists to satisfy a spec. Every behaviour a user can observe is written here before it is built.
+onyx is built spec-first. Code exists to satisfy a spec. Every behaviour a user can observe is written here before it is built.
 
 ## Lifecycle
 
@@ -53,19 +53,19 @@ What this spec deliberately leaves out.
 | 002 | [Rules engine](002-rules-engine.md) | RE | Implemented |
 | 003 | [Config and whitelist](003-config.md) | CF | Implemented |
 | 004 | [CLI skeleton](004-cli.md) | CL | Implemented |
-| 005 | [`molt scan`](005-scan.md) | SC | Implemented |
-| 006 | [`molt clean`](006-clean.md) | CN | Implemented |
-| 007 | [`molt system`](007-system.md) | SY | Implemented |
-| 008 | [`molt purge`](008-purge.md) | PG | Implemented |
-| 009 | [`molt installer`](009-installer.md) | IN | Implemented |
+| 005 | [`onyx scan`](005-scan.md) | SC | Implemented |
+| 006 | [`onyx clean`](006-clean.md) | CN | Implemented |
+| 007 | [`onyx system`](007-system.md) | SY | Implemented |
+| 008 | [`onyx purge`](008-purge.md) | PG | Implemented |
+| 009 | [`onyx installer`](009-installer.md) | IN | Implemented |
 | 010 | [Built-in rules](010-built-in-rules.md) | BR | Implemented |
 | 011 | [Locked folders](011-locked-folders.md) | LF | Implemented |
-| 012 | [`molt analyze`](012-analyze.md) | AN | Implemented |
-| 013 | [`molt status`](013-status.md) | ST | Implemented |
-| 014 | [`molt uninstall`](014-uninstall.md) | UN | Implemented |
-| 015 | [`molt optimize`](015-optimize.md) | OP | Implemented |
-| 016 | [The molt banner](016-banner.md) | BN | Implemented |
-| 017 | [`molt history`](017-history.md) | HI | Implemented |
+| 012 | [`onyx analyze`](012-analyze.md) | AN | Implemented |
+| 013 | [`onyx status`](013-status.md) | ST | Implemented |
+| 014 | [`onyx uninstall`](014-uninstall.md) | UN | Implemented |
+| 015 | [`onyx optimize`](015-optimize.md) | OP | Implemented |
+| 016 | [The onyx banner](016-banner.md) | BN | Implemented |
+| 017 | [`onyx history`](017-history.md) | HI | Implemented |
 | 018 | [Shell completions](018-completions.md) | CO | Implemented |
-| 019 | [The `molt` menu](019-menu.md) | MN | Implemented |
-| 020 | [`molt update` and `molt remove`](020-self.md) | SE | Implemented |
+| 019 | [The `onyx` menu](019-menu.md) | MN | Implemented |
+| 020 | [`onyx update` and `onyx remove`](020-self.md) | SE | Implemented |

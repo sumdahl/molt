@@ -189,7 +189,7 @@ fn cf_07_dry_run_by_default_from_config_or_environment() {
 }
 
 #[test]
-fn cf_07_a_bad_molt_dry_run_value_is_an_error() {
+fn cf_07_a_bad_onyx_dry_run_value_is_an_error() {
     for value in ["yes", "true", "", "2"] {
         for requested in [Requested::Default, Requested::Live, Requested::DryRun] {
             let result = Config::default().decide(requested, Some(OsStr::new(value)));

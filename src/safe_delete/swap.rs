@@ -44,7 +44,7 @@ pub fn swap_in(target: &Path, new: &Path, euid: Uid) -> Result<PathBuf, Errno> {
     }
 
     let temp = format!(
-        ".{}.molt-update-{}",
+        ".{}.onyx-update-{}",
         name.to_string_lossy(),
         std::process::id()
     );

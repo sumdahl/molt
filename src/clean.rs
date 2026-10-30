@@ -1,4 +1,4 @@
-//! `molt clean` (specs/006-clean.md): carry out what the preview showed, and only that.
+//! `onyx clean` (specs/006-clean.md): carry out what the preview showed, and only that.
 
 use std::collections::HashSet;
 use std::fmt;
@@ -172,7 +172,7 @@ fn is_done(outcome: &Outcome) -> bool {
     )
 }
 
-/// A rule with an owning-tool command never has its files deleted by molt (CN-08).
+/// A rule with an owning-tool command never has its files deleted by onyx (CN-08).
 fn deletes_files(rules: &[Rule], id: &RuleId) -> bool {
     rules
         .iter()
@@ -207,7 +207,7 @@ fn rule_result<'a>(
 }
 
 /// CN-08: runs the rule's own cleanup command without a shell, with stdin closed and its
-/// output on stderr (stdout stays molt's, for `--json`). Freed is the size before minus
+/// output on stderr (stdout stays onyx's, for `--json`). Freed is the size before minus
 /// after.
 fn run_tool(
     rule: &Rule,

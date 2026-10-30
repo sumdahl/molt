@@ -1,17 +1,17 @@
-# 012: `molt analyze`
+# 012: `onyx analyze`
 
 Status: Implemented
 Prefix: AN
 
 ## Goal
 
-`molt analyze` shows where the space in a folder goes, largest first, so you can find what `scan` doesn't know about. This spec covers the measuring core and its plain output (#33). The full-screen browser (#34) and trashing picked items (#35) extend it later, with requirements added here.
+`onyx analyze` shows where the space in a folder goes, largest first, so you can find what `scan` doesn't know about. This spec covers the measuring core and its plain output (#33). The full-screen browser (#34) and trashing picked items (#35) extend it later, with requirements added here.
 
 ## Non-goals
 
 - Changing anything. `analyze` is read-only; trashing comes with #35, through safe delete.
 - A full-screen interface. That's #34.
-- Apparent sizes (`du --apparent-size`). molt reports on-disk sizes only (P-12).
+- Apparent sizes (`du --apparent-size`). onyx reports on-disk sizes only (P-12).
 
 ## Model
 
@@ -24,7 +24,7 @@ Prefix: AN
 ### Measuring
 - **AN-01** Sizes are on-disk (`st_blocks × 512`), and a file with several hard links inside the walk is counted once, for the first path that reaches it (P-12).
 - **AN-02** The walk never follows symlinks (a symlink counts as its own size) and never crosses into another filesystem: a mount point inside is listed with size 0 and marked `mount`.
-- **AN-03** A folder that can't be read, or anything that can't be measured, makes the folders above it partial: their sizes are shown with `+` (at least this much), and `--json` sets `partial` on them. molt exits 3 if anything was partial (P-13).
+- **AN-03** A folder that can't be read, or anything that can't be measured, makes the folders above it partial: their sizes are shown with `+` (at least this much), and `--json` sets `partial` on them. onyx exits 3 if anything was partial (P-13).
 - **AN-04** The walk runs in parallel on up to the machine's available parallelism, with the standard library's threads (no new dependency). The result doesn't depend on the order threads finish in.
 - **AN-05** `PATH` must be a directory. A missing path, a file, or a symlink is an error (exit 1) naming the path.
 
@@ -36,9 +36,9 @@ Prefix: AN
 
 ### Browser (#34)
 
-The browser is a full-screen view over the same walk. It's written in molt: raw terminal mode through `rustix` termios and ANSI escape codes, with no terminal crate (Decisions).
+The browser is a full-screen view over the same walk. It's written in onyx: raw terminal mode through `rustix` termios and ANSI escape codes, with no terminal crate (Decisions).
 
-- **AN-10** `molt analyze` opens the browser when stdin and stdout are both terminals, and `--json` and `--list` aren't given. Otherwise it prints the listing (AN-06), as now. `--list` forces the listing. Leaving the browser exits 0; `--depth` and `--all` apply to the listing only.
+- **AN-10** `onyx analyze` opens the browser when stdin and stdout are both terminals, and `--json` and `--list` aren't given. Otherwise it prints the listing (AN-06), as now. `--list` forces the listing. Leaving the browser exits 0; `--depth` and `--all` apply to the listing only.
 - **AN-11** While the walk runs, the screen shows a progress line (folders and bytes counted so far). `q` or Ctrl-C stops the walk and leaves.
 - **AN-12** The screen shows the current folder's path and total, then its entries largest first: size (`+` if partial), share of the folder, a bar, and the name. One entry is selected.
 - **AN-13** Keys: `j`/`k`/↓/↑ move, `g`/`G`/Home/End jump to the first or last entry, PgUp/PgDn move a screen, `l`/→/Enter open a folder, `h`/←/Backspace go up to the parent (never above the starting folder), `s` switches between size and name order, `r` measures the current folder again, `?` shows the keys, and `q` leaves.
@@ -54,7 +54,7 @@ The first and only way the browser changes anything. It goes through safe delete
 - **AN-18** `Space` marks or unmarks the selected entry and moves down. Marked entries show a `*`, and the bottom line shows how many are marked and their total size. Marks stay while moving between folders.
 - **AN-19** Each mark records the entry as it is now (`Candidate::scan`: device, inode, type, mtime), so anything that changes before the trash step is skipped (SD-08, SD-10).
 - **AN-20** `d` trashes the marked entries, or the selected entry if none are marked. It first runs a safe-delete dry run of exactly those entries, in trash mode, and shows its full result on screen: each entry, its size, and what would happen to it, including any refused (`protected`, `whitelisted`) or skipped, with the reason.
-- **AN-21** Below that preview, molt asks "Move N items (SIZE) to the trash? [y/N]". Only `y` goes ahead. Any other key goes back to the browser with nothing changed and the marks kept. In a dry run (`--dry-run`, the config or `MOLT_DRY_RUN`, CF-07), the preview ends with "Dry run, so nothing moved" and the reason, and there is no question (P-05).
+- **AN-21** Below that preview, onyx asks "Move N items (SIZE) to the trash? [y/N]". Only `y` goes ahead. Any other key goes back to the browser with nothing changed and the marks kept. In a dry run (`--dry-run`, the config or `ONYX_DRY_RUN`, CF-07), the preview ends with "Dry run, so nothing moved" and the reason, and there is no question (P-05).
 - **AN-22** After `y`, one live safe-delete plan in trash mode runs over the same candidates. The screen then shows the result per entry (trashed, skipped or failed, with the reason), the marks are cleared, and the folders above the changed entries are measured again (as `r`).
 - **AN-23** Nothing is ever deleted permanently from the browser: there is no key for it, and the plan's mode is always trash (SD-11). An entry the trash can't take (`no-trash`) is reported and kept.
 - **AN-24** Every trashed entry is in the operation log (SD-15). A log that can't be opened stops the step before anything moves, and says so on screen.
@@ -80,4 +80,4 @@ The first and only way the browser changes anything. It goes through safe delete
 - **Trash only.** No permanent delete from the browser (AN-23); emptying the trash is a separate, deliberate act.
 - **A plain `y`** after the full preview (AN-21).
 - **Trashing works wherever safe delete can trash**, inside `$HOME` or on another filesystem with a `.Trash-$uid` folder (SD-11).
-- **No new dependency.** The parallel walk uses standard library threads, and the browser (#34) will drive the terminal through `rustix`. molt keeps full control of its code (maintainer decision).
+- **No new dependency.** The parallel walk uses standard library threads, and the browser (#34) will drive the terminal through `rustix`. onyx keeps full control of its code (maintainer decision).

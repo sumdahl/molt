@@ -1,4 +1,4 @@
-//! `molt analyze` (specs/012-analyze.md): where the space in a folder goes. Read-only.
+//! `onyx analyze` (specs/012-analyze.md): where the space in a folder goes. Read-only.
 
 use std::collections::HashSet;
 use std::fmt;

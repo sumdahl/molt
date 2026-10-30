@@ -38,7 +38,7 @@ fn un_03_shared_folder_names_are_refused() {
         "autostart",
         "Trash",
         "systemd",
-        "molt",
+        "onyx",
         "local",
     ] {
         assert_eq!(

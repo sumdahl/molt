@@ -5,14 +5,14 @@ Prefix: P
 
 ## Goal
 
-These rules hold for every command molt has or will have. A feature spec may add restrictions. It may not relax these rules.
+These rules hold for every command onyx has or will have. A feature spec may add restrictions. It may not relax these rules.
 
 ## Requirements
 
 - **P-01 One way to delete.** Every removal, move-to-trash, or rename of user data goes through the safe-delete module ([001](001-safe-delete.md)). `clippy.toml` forbids `std::fs` removal calls everywhere else, and CI runs clippy with `-D warnings`.
-- **P-02 Prove it's safe, or leave it.** If molt cannot show that a path is safe to remove, it skips the path and reports the reason. Unknown means no.
-- **P-03 Fail closed.** If config, whitelist, or rule files exist but can't be read or parsed, molt stops before deleting anything.
-- **P-04 No root by default.** molt runs as the invoking user. System-level actions (pacman cache, journal, coredumps) run only through an explicit step that names the privileged command and asks for confirmation. If molt is started as root without that step, it refuses to run.
+- **P-02 Prove it's safe, or leave it.** If onyx cannot show that a path is safe to remove, it skips the path and reports the reason. Unknown means no.
+- **P-03 Fail closed.** If config, whitelist, or rule files exist but can't be read or parsed, onyx stops before deleting anything.
+- **P-04 No root by default.** onyx runs as the invoking user. System-level actions (pacman cache, journal, coredumps) run only through an explicit step that names the privileged command and asks for confirmation. If onyx is started as root without that step, it refuses to run.
 - **P-05 Dry run everywhere.** Every command accepts `--dry-run`, a global flag, so adding it is always safe. A dry run:
   - changes nothing anywhere. It deletes, trashes, moves and creates nothing: no trash directory, no operation-log entry, no config or state file.
   - never runs an owning tool's cleanup command (P-07). It shows the exact command a live run would run, or runs the tool's own read-only preview if it has one (`paccache -d`).
@@ -28,9 +28,9 @@ These rules hold for every command molt has or will have. A feature spec may add
   - The live run acts only on items the preview showed. Anything that changed in between is skipped (SD-08, SD-10), never added.
   - This holds for every kind of change: removing, trashing, changing permissions (011), and running an owning tool's command (P-07), whose exact command line is shown first.
   - Each command spec must include a test that its live run prints the preview before the first change.
-- **P-07 Ask the owning tool first.** When a tool has its own cleanup command (`paccache`, `npm cache clean`, `docker system prune`, `journalctl --vacuum-*`, `flatpak uninstall --unused`, `uv cache clean`…), molt runs that command instead of deleting the tool's files directly.
-- **P-08 Don't clean what's in use.** A rule may name the processes that own its data. molt skips the rule while any of those processes is running.
-- **P-09 Log every change.** Every mutation is appended to `$XDG_STATE_HOME/molt/operations.log` (one JSON object per line). `MOLT_NO_OPLOG=1` disables the log.
+- **P-07 Ask the owning tool first.** When a tool has its own cleanup command (`paccache`, `npm cache clean`, `docker system prune`, `journalctl --vacuum-*`, `flatpak uninstall --unused`, `uv cache clean`…), onyx runs that command instead of deleting the tool's files directly.
+- **P-08 Don't clean what's in use.** A rule may name the processes that own its data. onyx skips the rule while any of those processes is running.
+- **P-09 Log every change.** Every mutation is appended to `$XDG_STATE_HOME/onyx/operations.log` (one JSON object per line). `ONYX_NO_OPLOG=1` disables the log.
 - **P-10 Any Linux, not just Omarchy.** Core behaviour uses only the Linux kernel ABI, XDG base directories, and the FreeDesktop trash spec. Distro and package-manager rules turn on only when their tool is detected.
 - **P-11 Machine-readable output.** Every command that reports something supports `--json`, and that output is a stable interface.
 - **P-12 Honest numbers.** Reported sizes are on-disk sizes (`st_blocks × 512`). Hard links are counted once. A partial scan says that it is partial.

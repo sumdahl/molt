@@ -1,16 +1,16 @@
-# 009: `molt installer`
+# 009: `onyx installer`
 
 Status: Implemented
 Prefix: IN
 
 ## Goal
 
-`molt installer` finds the installers you downloaded and no longer need: `.deb`, `.rpm`, `.pkg.tar.zst`, `.AppImage`, `.iso`, `.run`. These are your files, not caches, so they go to the trash by default (000 Decisions) and you can get them back. It uses the same rules engine, preview, question and safe delete as `clean` (006).
+`onyx installer` finds the installers you downloaded and no longer need: `.deb`, `.rpm`, `.pkg.tar.zst`, `.AppImage`, `.iso`, `.run`. These are your files, not caches, so they go to the trash by default (000 Decisions) and you can get them back. It uses the same rules engine, preview, question and safe delete as `clean` (006).
 
 ## Non-goals
 
 - Looking everywhere. Only the folders listed below, one level deep (RE-06's shallow globs).
-- Telling whether an installer is still needed (installed, or the only copy of an ISO). molt can't know, so it previews, asks, and uses the trash.
+- Telling whether an installer is still needed (installed, or the only copy of an ISO). onyx can't know, so it previews, asks, and uses the trash.
 - Making installers part of `clean`. A Downloads folder is user content; it's a separate command so `clean --yes` never touches it.
 
 ## Model
@@ -34,7 +34,7 @@ One rule per file type, all `user-content` (so trash mode), in the `installers` 
 
 ## Requirements
 
-- **IN-01** `molt installer` matches only its own rules; `clean` and `scan` never show or touch them. `--only`/`--skip` pick rules, with an unknown id a usage error (exit 2), as CN-02.
+- **IN-01** `onyx installer` matches only its own rules; `clean` and `scan` never show or touch them. `--only`/`--skip` pick rules, with an unknown id a usage error (exit 2), as CN-02.
 - **IN-02** Only regular files match: a directory is skipped with reason `not-a-file`, and a symlink with `symlink` (RE-10).
 - **IN-03** A file modified in the last 14 days is skipped with reason `recently-changed` and counted in the preview, as it may be one you're about to use.
 - **IN-04** The default mode is trash (SD-11). `--permanent` deletes instead, after the same preview and question.
@@ -52,4 +52,4 @@ One rule per file type, all `user-content` (so trash mode), in the `installers` 
 - **14 days.** Newer files are left out, even though the trash would keep them.
 - **`~/Downloads` and `~/Desktop` only.** Reading `$XDG_DOWNLOAD_DIR` from `user-dirs.dirs` (renamed or translated folders) can come later.
 - **No `.img`.** VM disks share the extension.
-- **An `installers` category**, shown as "Installers". User rules can use it too, and then they belong to `molt installer`.
+- **An `installers` category**, shown as "Installers". User rules can use it too, and then they belong to `onyx installer`.

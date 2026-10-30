@@ -1,4 +1,4 @@
-//! `molt scan` (specs/005-scan.md): what could be freed, measured by a safe-delete dry run.
+//! `onyx scan` (specs/005-scan.md): what could be freed, measured by a safe-delete dry run.
 
 use std::cmp::Reverse;
 use std::collections::HashMap;
@@ -146,7 +146,7 @@ pub fn measure_findings(
             })
             .collect(),
         inactive: findings.inactive,
-        freed_by: "molt clean".to_owned(),
+        freed_by: "onyx clean".to_owned(),
     };
     Ok(Survey {
         report,
@@ -327,7 +327,7 @@ impl fmt::Display for ScanReport {
             writeln!(
                 f,
                 "{locked} locked folders: you own them but can't read them, so their contents \
-                 weren't measured. `molt clean` will ask before opening them (u+rwx)."
+                 weren't measured. `onyx clean` will ask before opening them (u+rwx)."
             )?;
         }
         if self.partial {

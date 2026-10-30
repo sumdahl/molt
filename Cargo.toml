@@ -1,11 +1,11 @@
 [package]
-name = "molt"
+name = "onyx"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Reclaim disk space on Linux, safely"
 license = "MIT"
-repository = "https://github.com/sumdahl/molt"
+repository = "https://github.com/sumdahl/onyx"
 publish = false
 
 [dependencies]

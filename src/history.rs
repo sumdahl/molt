@@ -1,4 +1,4 @@
-//! `molt history` (specs/017-history.md): the operation log (P-09, SD-15), read only.
+//! `onyx history` (specs/017-history.md): the operation log (P-09, SD-15), read only.
 
 use std::fmt;
 use std::io;

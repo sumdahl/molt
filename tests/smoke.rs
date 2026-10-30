@@ -25,13 +25,13 @@ impl Home {
     }
 
     fn config(&self, text: &str) {
-        let dir = self.path.join(".config/molt");
+        let dir = self.path.join(".config/onyx");
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("config.toml"), text).unwrap();
     }
 
     fn rules(&self, text: &str) {
-        let dir = self.path.join(".config/molt/rules");
+        let dir = self.path.join(".config/onyx/rules");
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("test.toml"), text).unwrap();
     }
@@ -44,16 +44,16 @@ impl Home {
         path
     }
 
-    /// Runs `molt scan --json` and parses its report.
+    /// Runs `onyx scan --json` and parses its report.
     fn scan_json(&self) -> (Option<i32>, serde_json::Value) {
-        let out = self.molt(&["scan", "--json"], &[]);
+        let out = self.onyx(&["scan", "--json"], &[]);
         let json = serde_json::from_slice(&out.stdout)
             .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&out.stdout)));
         (out.status.code(), json)
     }
 
-    fn molt(&self, args: &[&str], extra: &[(&str, &str)]) -> Output {
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_molt"));
+    fn onyx(&self, args: &[&str], extra: &[(&str, &str)]) -> Output {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_onyx"));
         cmd.args(args)
             .env_clear()
             .env("PATH", "")
@@ -63,12 +63,12 @@ impl Home {
             .env("XDG_DATA_HOME", self.path.join(".local/share"))
             .env("XDG_STATE_HOME", self.path.join(".local/state"))
             .envs(extra.iter().copied());
-        cmd.output().expect("failed to run molt binary")
+        cmd.output().expect("failed to run onyx binary")
     }
 }
 
-fn molt(args: &[&str]) -> Output {
-    Home::new().molt(args, &[])
+fn onyx(args: &[&str]) -> Output {
+    Home::new().onyx(args, &[])
 }
 
 fn stderr(out: &Output) -> String {
@@ -95,62 +95,62 @@ fn snapshot(root: &Path) -> BTreeMap<PathBuf, (u64, i64)> {
 
 #[test]
 fn version_matches_cargo_manifest() {
-    let out = molt(&["--version"]);
+    let out = onyx(&["--version"]);
     assert!(out.status.success());
     assert_eq!(
         String::from_utf8_lossy(&out.stdout),
-        format!("molt {}\n", env!("CARGO_PKG_VERSION"))
+        format!("onyx {}\n", env!("CARGO_PKG_VERSION"))
     );
 }
 
 #[test]
 fn help_exits_zero() {
-    let out = molt(&["--help"]);
+    let out = onyx(&["--help"]);
     assert!(out.status.success());
-    assert!(String::from_utf8_lossy(&out.stdout).contains("Usage: molt"));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("Usage: onyx"));
 }
 
 #[test]
 fn unknown_flag_is_rejected() {
-    let out = molt(&["--definitely-not-a-flag"]);
+    let out = onyx(&["--definitely-not-a-flag"]);
     assert_eq!(out.status.code(), Some(2));
 }
 
 #[test]
 fn cl_01_global_flags_are_accepted() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     for args in [&["--dry-run"][..], &["--live"], &["--yes", "--json"], &[]] {
-        let out = molt(args);
+        let out = onyx(args);
         assert!(out.status.success(), "{args:?}: {}", stderr(&out));
     }
 }
 
 #[test]
 fn cl_02_dry_run_with_live_is_a_usage_error() {
-    assert_eq!(molt(&["--dry-run", "--live"]).status.code(), Some(2));
+    assert_eq!(onyx(&["--dry-run", "--live"]).status.code(), Some(2));
 }
 
 #[test]
-fn cl_03_cl_08_a_fatal_error_exits_1_with_one_molt_line() {
+fn cl_03_cl_08_a_fatal_error_exits_1_with_one_onyx_line() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.config("colour = \"red\"");
 
-    let out = home.molt(&[], &[]);
+    let out = home.onyx(&[], &[]);
 
     assert_eq!(out.status.code(), Some(1));
     let err = stderr(&out);
-    assert!(err.starts_with("molt: "), "{err}");
+    assert!(err.starts_with("onyx: "), "{err}");
     assert!(err.contains("config.toml"), "{err}");
 }
 
 #[test]
 fn cl_04_a_relative_home_is_fatal() {
-    let out = Command::new(env!("CARGO_BIN_EXE_molt"))
+    let out = Command::new(env!("CARGO_BIN_EXE_onyx"))
         .env_clear()
         .env("HOME", "not/absolute")
         .output()
@@ -161,12 +161,12 @@ fn cl_04_a_relative_home_is_fatal() {
 #[test]
 fn cl_09_json_errors_are_also_written_to_stdout() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.config("colour = \"red\"");
 
-    let out = home.molt(&["--json"], &[]);
+    let out = home.onyx(&["--json"], &[]);
 
     assert_eq!(out.status.code(), Some(1));
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -176,20 +176,20 @@ fn cl_09_json_errors_are_also_written_to_stdout() {
 #[test]
 fn p_05_startup_writes_nothing() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.config("whitelist = [\"~/keep\"]");
     let before = snapshot(&home.path);
 
     for args in [&["--dry-run"][..], &["--live"], &[]] {
-        assert!(home.molt(args, &[]).status.success());
+        assert!(home.onyx(args, &[]).status.success());
     }
 
     assert_eq!(snapshot(&home.path), before);
 }
 
-// molt scan (specs/005-scan.md)
+// onyx scan (specs/005-scan.md)
 
 /// A user rule matching `~/junk/*`, with an owning-tool command.
 const JUNK_RULE: &str = r#"
@@ -237,7 +237,7 @@ fn rule<'a>(report: &'a serde_json::Value, id: &str) -> &'a serde_json::Value {
 #[test]
 fn sc_01_scan_changes_nothing_even_with_live() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.rules(JUNK_RULE);
@@ -251,7 +251,7 @@ fn sc_01_scan_changes_nothing_even_with_live() {
         &["scan", "--dry-run"],
         &[],
     ] {
-        let out = home.molt(args, &[]);
+        let out = home.onyx(args, &[]);
         assert!(out.status.success(), "{args:?}: {}", stderr(&out));
         assert!(
             !stderr(&out).contains("--live"),
@@ -259,7 +259,7 @@ fn sc_01_scan_changes_nothing_even_with_live() {
             stderr(&out)
         );
     }
-    let with_config_dry_run = home.molt(&["scan"], &[("MOLT_DRY_RUN", "1")]);
+    let with_config_dry_run = home.onyx(&["scan"], &[("ONYX_DRY_RUN", "1")]);
 
     assert!(
         stderr(&with_config_dry_run).is_empty(),
@@ -272,7 +272,7 @@ fn sc_01_scan_changes_nothing_even_with_live() {
 #[test]
 fn sc_02_sizes_come_from_the_dry_run_and_skips_are_not_counted() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.rules(JUNK_RULE);
@@ -303,14 +303,14 @@ fn sc_02_sizes_come_from_the_dry_run_and_skips_are_not_counted() {
 #[test]
 fn sc_03_sc_05_the_report_is_grouped_sorted_and_totalled() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.rules(JUNK_RULE);
     home.file("junk/a", 256 * 1024);
     home.file(".cache/thumbnails/t.png", 4096);
 
-    let out = home.molt(&["scan"], &[]);
+    let out = home.onyx(&["scan"], &[]);
     let text = String::from_utf8_lossy(&out.stdout);
 
     assert!(out.status.success(), "{}", stderr(&out));
@@ -327,7 +327,7 @@ fn sc_03_sc_05_the_report_is_grouped_sorted_and_totalled() {
     );
     assert!(text.contains("inactive"), "{text}");
     assert!(
-        text.contains("Total:") && text.contains("molt clean"),
+        text.contains("Total:") && text.contains("onyx clean"),
         "{text}"
     );
 }
@@ -335,7 +335,7 @@ fn sc_03_sc_05_the_report_is_grouped_sorted_and_totalled() {
 #[test]
 fn sc_06_the_json_report_has_the_stable_shape() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.rules(JUNK_RULE);
@@ -368,7 +368,7 @@ fn sc_06_the_json_report_has_the_stable_shape() {
 #[test]
 fn sc_07_symlinks_are_reported_and_unreadable_dirs_make_it_partial() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.rules(&(JUNK_RULE.to_owned() + LOCKED_RULE));
@@ -385,7 +385,7 @@ fn sc_07_symlinks_are_reported_and_unreadable_dirs_make_it_partial() {
 
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
     let (code, report) = home.scan_json();
-    let human = home.molt(&["scan"], &[]);
+    let human = home.onyx(&["scan"], &[]);
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
 
     assert_eq!(code, Some(3));
@@ -397,7 +397,7 @@ fn sc_07_symlinks_are_reported_and_unreadable_dirs_make_it_partial() {
 #[test]
 fn lf_06_scan_shows_locked_folders_and_changes_no_mode() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.rules(JUNK_RULE);
@@ -408,7 +408,7 @@ fn lf_06_scan_shows_locked_folders_and_changes_no_mode() {
     fs::set_permissions(&pkg, fs::Permissions::from_mode(0o111)).unwrap();
 
     let (code, report) = home.scan_json();
-    let human = home.molt(&["scan"], &[]);
+    let human = home.onyx(&["scan"], &[]);
     let mode = fs::symlink_metadata(&pkg).unwrap().mode() & 0o7777;
     fs::set_permissions(&pkg, fs::Permissions::from_mode(0o755)).unwrap();
 
@@ -421,7 +421,7 @@ fn lf_06_scan_shows_locked_folders_and_changes_no_mode() {
     let text = String::from_utf8_lossy(&human.stdout);
     assert!(text.contains("(1 locked)"), "{text}");
     assert!(
-        text.contains("molt clean") && text.contains("ask"),
+        text.contains("onyx clean") && text.contains("ask"),
         "{text}"
     );
 }
@@ -429,13 +429,13 @@ fn lf_06_scan_shows_locked_folders_and_changes_no_mode() {
 #[test]
 fn sc_08_cl_01_global_flags_work_after_the_command_name() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.file(".cache/thumbnails/t.png", 4096);
 
-    let after = home.molt(&["scan", "--json"], &[]);
-    let before = home.molt(&["--json", "scan"], &[]);
+    let after = home.onyx(&["scan", "--json"], &[]);
+    let before = home.onyx(&["--json", "scan"], &[]);
 
     assert!(after.status.success());
     assert_eq!(after.stdout, before.stdout);
@@ -445,18 +445,18 @@ fn sc_08_cl_01_global_flags_work_after_the_command_name() {
 #[test]
 fn sc_09_no_command_runs_scan() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.file(".cache/thumbnails/t.png", 4096);
 
     assert_eq!(
-        home.molt(&["--json"], &[]).stdout,
-        home.molt(&["scan", "--json"], &[]).stdout
+        home.onyx(&["--json"], &[]).stdout,
+        home.onyx(&["scan", "--json"], &[]).stdout
     );
 }
 
-// molt clean (specs/006-clean.md)
+// onyx clean (specs/006-clean.md)
 
 /// A fake tool in `<home>/../bin`: a shell script that records each run in `<name>.ran`.
 fn fake_tool(home: &Home, name: &str, exit: i32) -> PathBuf {
@@ -464,7 +464,7 @@ fn fake_tool(home: &Home, name: &str, exit: i32) -> PathBuf {
     fs::create_dir_all(&bin).unwrap();
     let tool = bin.join(name);
     let body = format!(
-        "#!/bin/sh\n/bin/cp \"$MOLT_TEST_STDOUT\" \"{ran}\" 2>/dev/null || /bin/touch \"{ran}\"\nexit {exit}\n",
+        "#!/bin/sh\n/bin/cp \"$ONYX_TEST_STDOUT\" \"{ran}\" 2>/dev/null || /bin/touch \"{ran}\"\nexit {exit}\n",
         ran = home.path.join(format!("{name}.ran")).display()
     );
     fs::write(&tool, body).unwrap();
@@ -487,24 +487,24 @@ impl Home {
     fn clean(&self, args: &[&str]) -> Output {
         let mut all = vec!["clean"];
         all.extend_from_slice(args);
-        self.molt(&all, &[])
+        self.onyx(&all, &[])
     }
 
-    /// Runs molt in a pseudo-terminal (via `script`), typing `input`. `None` if `script`
+    /// Runs onyx in a pseudo-terminal (via `script`), typing `input`. `None` if `script`
     /// isn't installed.
-    fn molt_tty(&self, args: &str, input: &str) -> Option<Output> {
-        self.molt_tty_with_path(args, input, "")
+    fn onyx_tty(&self, args: &str, input: &str) -> Option<Output> {
+        self.onyx_tty_with_path(args, input, "")
     }
 
-    /// As `molt_tty`, with molt's `$PATH` set to `path`.
-    fn molt_tty_with_path(&self, args: &str, input: &str, path: &str) -> Option<Output> {
+    /// As `onyx_tty`, with onyx's `$PATH` set to `path`.
+    fn onyx_tty_with_path(&self, args: &str, input: &str, path: &str) -> Option<Output> {
         let script = Path::new("/usr/bin/script");
         if !script.exists() {
             return None;
         }
         let command = format!(
             "/usr/bin/env PATH={path} {} {args}",
-            env!("CARGO_BIN_EXE_molt")
+            env!("CARGO_BIN_EXE_onyx")
         );
         let mut child = Command::new(script)
             .args(["-qec", &command, "/dev/null"])
@@ -552,7 +552,7 @@ fn stdout(out: &Output) -> String {
 #[test]
 fn cn_01_cn_11_yes_cleans_what_the_preview_shows() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.rules(PLAIN_JUNK_RULE);
@@ -577,7 +577,7 @@ fn exists(path: &Path) -> bool {
 #[test]
 fn cn_02_only_and_skip_narrow_the_run_and_unknown_ids_are_usage_errors() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.rules(PLAIN_JUNK_RULE);
@@ -603,20 +603,20 @@ fn cn_02_only_and_skip_narrow_the_run_and_unknown_ids_are_usage_errors() {
 #[test]
 fn cn_03_rules_whose_programs_are_running_are_left_out() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.rules(
-        &PLAIN_JUNK_RULE.replace("paths = [", "processes = [\"molt-busy-test\"]\npaths = ["),
+        &PLAIN_JUNK_RULE.replace("paths = [", "processes = [\"onyx-busy-test\"]\npaths = ["),
     );
     let a = home.file("junk/a", 4096);
-    let busy = home.path.join("molt-busy-test");
+    let busy = home.path.join("onyx-busy-test");
     // `sh` blocked on a builtin; a multicall `sleep` would exit under an unknown name.
     fs::copy("/bin/sh", &busy).unwrap();
     let mut program = spawn_fresh_copy(Command::new(&busy).args(["-c", "read line"]));
     // Until it has exec'd, /proc still shows the test binary.
     let comm = format!("/proc/{}/comm", program.id());
-    while !fs::read_to_string(&comm).is_ok_and(|c| c.trim_end() == "molt-busy-test") {
+    while !fs::read_to_string(&comm).is_ok_and(|c| c.trim_end() == "onyx-busy-test") {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 
@@ -626,13 +626,13 @@ fn cn_03_rules_whose_programs_are_running_are_left_out() {
 
     assert!(out.status.success(), "{}", stderr(&out));
     assert!(exists(&a));
-    assert!(stdout(&out).contains("molt-busy-test"), "{}", stdout(&out));
+    assert!(stdout(&out).contains("onyx-busy-test"), "{}", stdout(&out));
 }
 
 #[test]
 fn cn_04_cn_08_the_preview_is_printed_before_the_first_change() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.rules(TOOL_RULE);
@@ -640,12 +640,12 @@ fn cn_04_cn_08_the_preview_is_printed_before_the_first_change() {
     let bin = fake_tool(&home, "fake-clean", 0);
     let captured = home.path.join("stdout.txt");
 
-    let status = Command::new(env!("CARGO_BIN_EXE_molt"))
+    let status = Command::new(env!("CARGO_BIN_EXE_onyx"))
         .args(["clean", "--yes"])
         .env_clear()
         .env("HOME", &home.path)
         .env("PATH", &bin)
-        .env("MOLT_TEST_STDOUT", &captured)
+        .env("ONYX_TEST_STDOUT", &captured)
         .stdout(fs::File::create(&captured).unwrap())
         .status()
         .unwrap();
@@ -662,14 +662,14 @@ fn cn_04_cn_08_the_preview_is_printed_before_the_first_change() {
     );
     assert!(
         exists(&home.path.join("tooled/x")),
-        "molt must not delete a tool's files"
+        "onyx must not delete a tool's files"
     );
 }
 
 #[test]
 fn cn_05_no_means_nothing_and_no_terminal_needs_yes() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.file(".cache/thumbnails/t.png", 4096);
@@ -684,14 +684,14 @@ fn cn_05_no_means_nothing_and_no_terminal_needs_yes() {
     assert!(stderr(&piped).contains("--yes"), "{}", stderr(&piped));
     assert_eq!(snapshot(&home.path), before);
 
-    let Some(no) = home.molt_tty("clean", "n\n") else {
+    let Some(no) = home.onyx_tty("clean", "n\n") else {
         return eprintln!("skipped the terminal half: script(1) isn't installed");
     };
     assert_eq!(no.status.code(), Some(0), "{}", stdout(&no));
     assert!(stdout(&no).contains("Nothing changed"), "{}", stdout(&no));
     assert_eq!(snapshot(&home.path), before);
 
-    let yes = home.molt_tty("clean", "y\n").unwrap();
+    let yes = home.onyx_tty("clean", "y\n").unwrap();
     assert_eq!(yes.status.code(), Some(0), "{}", stdout(&yes));
     assert!(!exists(&home.path.join(".cache/thumbnails")));
 }
@@ -699,7 +699,7 @@ fn cn_05_no_means_nothing_and_no_terminal_needs_yes() {
 #[test]
 fn cn_06_lf_05_locked_folders_need_their_own_consent() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.rules(PLAIN_JUNK_RULE);
@@ -722,7 +722,7 @@ fn cn_06_lf_05_locked_folders_need_their_own_consent() {
 #[test]
 fn cn_07_a_dry_run_shows_the_preview_and_changes_nothing() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.rules(TOOL_RULE);
@@ -732,16 +732,16 @@ fn cn_07_a_dry_run_shows_the_preview_and_changes_nothing() {
     let before = snapshot(&home.path);
     let path = bin.to_str().unwrap();
 
-    let flag = home.molt(&["clean", "--dry-run", "--yes"], &[("PATH", path)]);
-    let env = home.molt(
+    let flag = home.onyx(&["clean", "--dry-run", "--yes"], &[("PATH", path)]);
+    let env = home.onyx(
         &["clean", "--yes"],
-        &[("PATH", path), ("MOLT_DRY_RUN", "1")],
+        &[("PATH", path), ("ONYX_DRY_RUN", "1")],
     );
 
     assert!(flag.status.success() && env.status.success());
     assert!(stdout(&flag).contains("Thumbnail cache"));
     assert!(
-        stderr(&env).contains("MOLT_DRY_RUN") && stderr(&env).contains("--live"),
+        stderr(&env).contains("ONYX_DRY_RUN") && stderr(&env).contains("--live"),
         "{}",
         stderr(&env)
     );
@@ -755,14 +755,14 @@ fn cn_07_a_dry_run_shows_the_preview_and_changes_nothing() {
 #[test]
 fn cn_08_a_failing_tool_is_reported_and_its_files_are_left_alone() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.rules(TOOL_RULE);
     let x = home.file("tooled/x", 4096);
     let bin = fake_tool(&home, "fake-clean", 1);
 
-    let out = home.molt(
+    let out = home.onyx(
         &["clean", "--yes", "--json"],
         &[("PATH", bin.to_str().unwrap())],
     );
@@ -780,7 +780,7 @@ fn cn_08_a_failing_tool_is_reported_and_its_files_are_left_alone() {
 #[test]
 fn cn_09_anything_changed_since_the_preview_is_skipped() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.rules(&(TOOL_RULE.to_owned() + PLAIN_JUNK_RULE));
@@ -800,7 +800,7 @@ fn cn_09_anything_changed_since_the_preview_is_skipped() {
     .unwrap();
     fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
 
-    let out = home.molt(&["clean", "--yes"], &[("PATH", bin.to_str().unwrap())]);
+    let out = home.onyx(&["clean", "--yes"], &[("PATH", bin.to_str().unwrap())]);
 
     assert_eq!(out.status.code(), Some(3), "{}", stdout(&out));
     assert_eq!(
@@ -813,7 +813,7 @@ fn cn_09_anything_changed_since_the_preview_is_skipped() {
 #[test]
 fn cn_10_permanent_and_trash_override_the_mode() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.rules(PLAIN_JUNK_RULE);
@@ -835,7 +835,7 @@ fn cn_10_permanent_and_trash_override_the_mode() {
 #[test]
 fn cn_12_tool_commands_are_logged() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.rules(TOOL_RULE);
@@ -843,12 +843,12 @@ fn cn_12_tool_commands_are_logged() {
     let bin = fake_tool(&home, "fake-clean", 0);
 
     assert!(
-        home.molt(&["clean", "--yes"], &[("PATH", bin.to_str().unwrap())])
+        home.onyx(&["clean", "--yes"], &[("PATH", bin.to_str().unwrap())])
             .status
             .success()
     );
 
-    let log = fs::read_to_string(home.path.join(".local/state/molt/operations.log")).unwrap();
+    let log = fs::read_to_string(home.path.join(".local/state/onyx/operations.log")).unwrap();
     let entry: serde_json::Value = serde_json::from_str(log.lines().next().unwrap()).unwrap();
     assert_eq!(entry["command"], serde_json::json!(["fake-clean", "--all"]));
     assert_eq!(entry["exit"], 0);
@@ -886,13 +886,13 @@ fn ran(home: &Home) -> String {
 #[test]
 fn sy_05_p_05_a_dry_run_runs_previews_only_and_never_sudo() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let bin = fake_system_tools(&home, "");
     let bin = bin.to_str().unwrap();
 
-    let out = home.molt(&["system", "--dry-run"], &[("PATH", bin)]);
+    let out = home.onyx(&["system", "--dry-run"], &[("PATH", bin)]);
     assert!(out.status.success(), "{}", stderr(&out));
     let ran = ran(&home);
     assert!(!ran.contains("sudo"), "{ran}");
@@ -909,13 +909,13 @@ fn sy_05_p_05_a_dry_run_runs_previews_only_and_never_sudo() {
 #[test]
 fn sy_06_no_means_nothing_and_no_terminal_needs_yes() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let bin = fake_system_tools(&home, "");
     let bin = bin.to_str().unwrap();
 
-    let piped = home.molt(&["system"], &[("PATH", bin)]);
+    let piped = home.onyx(&["system"], &[("PATH", bin)]);
     assert_eq!(piped.status.code(), Some(1));
     assert!(
         stdout(&piped).contains("would run"),
@@ -923,7 +923,7 @@ fn sy_06_no_means_nothing_and_no_terminal_needs_yes() {
     );
     assert!(!ran(&home).contains("sudo"), "{}", ran(&home));
 
-    let Some(no) = home.molt_tty_with_path("system", "n\n", bin) else {
+    let Some(no) = home.onyx_tty_with_path("system", "n\n", bin) else {
         return eprintln!("skipped the terminal half: script(1) isn't installed");
     };
     assert_eq!(no.status.code(), Some(0), "{}", stdout(&no));
@@ -934,13 +934,13 @@ fn sy_06_no_means_nothing_and_no_terminal_needs_yes() {
 #[test]
 fn sy_07_sy_08_sy_10_yes_runs_each_command_through_sudo_in_order() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let bin = fake_system_tools(&home, "journalctl");
     let bin = bin.to_str().unwrap();
 
-    let out = home.molt(&["system", "--yes", "--json"], &[("PATH", bin)]);
+    let out = home.onyx(&["system", "--yes", "--json"], &[("PATH", bin)]);
     assert_eq!(out.status.code(), Some(3), "{}", stderr(&out));
     let ran = ran(&home);
     let sudo_lines: Vec<&str> = ran
@@ -964,23 +964,23 @@ fn sy_07_sy_08_sy_10_yes_runs_each_command_through_sudo_in_order() {
     assert!(lines[0]["preview"]["tasks"].is_array(), "{}", stdout(&out));
     assert_eq!(lines[1]["result"]["tasks"][1]["commands"][0]["exit"], 1);
     // SY-11
-    let log = fs::read_to_string(home.path.join(".local/state/molt/operations.log")).unwrap();
+    let log = fs::read_to_string(home.path.join(".local/state/onyx/operations.log")).unwrap();
     assert_eq!(log.lines().count(), 4, "{log}");
 }
 
 #[test]
 fn sy_01_sy_02_unknown_ids_are_refused_and_relative_path_entries_ignored() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     fake_system_tools(&home, "");
 
-    let typo = home.molt(&["system", "--only", "pacman", "--yes"], &[]);
+    let typo = home.onyx(&["system", "--only", "pacman", "--yes"], &[]);
     assert_eq!(typo.status.code(), Some(2));
 
-    // `bin` is relative to molt's working directory, which is the temp home.
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_molt"));
+    // `bin` is relative to onyx's working directory, which is the temp home.
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_onyx"));
     let out = cmd
         .args(["system", "--yes", "--json"])
         .current_dir(&home.path)
@@ -1027,13 +1027,13 @@ fn purge_home() -> (Home, PathBuf, PathBuf, PathBuf) {
 #[test]
 fn pg_01_without_purge_paths_there_is_nothing_to_do() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.file("projects/app/Cargo.toml", 10);
     home.file("projects/app/target/x", 4096);
 
-    let out = home.molt(&["purge", "--yes"], &[]);
+    let out = home.onyx(&["purge", "--yes"], &[]);
     assert!(out.status.success(), "{}", stderr(&out));
     assert!(stderr(&out).contains("purge_paths"), "{}", stderr(&out));
     assert!(exists(&home.path.join("projects/app/target/x")));
@@ -1042,12 +1042,12 @@ fn pg_01_without_purge_paths_there_is_nothing_to_do() {
 #[test]
 fn pg_07_p_05_dry_run_and_no_change_nothing() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let (home, ..) = purge_home();
     let before = snapshot(&home.path);
 
-    let dry = home.molt(&["purge", "--dry-run"], &[]);
+    let dry = home.onyx(&["purge", "--dry-run"], &[]);
     assert!(dry.status.success(), "{}", stderr(&dry));
     assert!(
         stdout(&dry).contains("Cargo target folders"),
@@ -1055,7 +1055,7 @@ fn pg_07_p_05_dry_run_and_no_change_nothing() {
         stdout(&dry)
     );
     assert!(
-        stdout(&dry).contains("with `molt purge`"),
+        stdout(&dry).contains("with `onyx purge`"),
         "{}",
         stdout(&dry)
     );
@@ -1066,7 +1066,7 @@ fn pg_07_p_05_dry_run_and_no_change_nothing() {
     );
     assert_eq!(snapshot(&home.path), before);
 
-    let piped = home.molt(&["purge"], &[]);
+    let piped = home.onyx(&["purge"], &[]);
     assert_eq!(piped.status.code(), Some(1), "no terminal needs --yes");
     assert_eq!(snapshot(&home.path), before);
 }
@@ -1074,11 +1074,11 @@ fn pg_07_p_05_dry_run_and_no_change_nothing() {
 #[test]
 fn pg_02_pg_04_pg_07_yes_removes_only_old_builds_next_to_their_marker() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let (home, built, loose, fresh) = purge_home();
 
-    let out = home.molt(&["purge", "--yes"], &[]);
+    let out = home.onyx(&["purge", "--yes"], &[]);
     assert!(out.status.success(), "{}", stderr(&out));
     assert!(!exists(&home.path.join("projects/app/target")));
     assert!(exists(&home.path.join("projects/app/Cargo.toml")));
@@ -1087,24 +1087,24 @@ fn pg_02_pg_04_pg_07_yes_removes_only_old_builds_next_to_their_marker() {
     assert!(exists(&fresh), "changed in the last 7 days");
     assert!(stdout(&out).contains("Freed"), "{}", stdout(&out));
     // CN-12
-    let log = fs::read_to_string(home.path.join(".local/state/molt/operations.log")).unwrap();
+    let log = fs::read_to_string(home.path.join(".local/state/onyx/operations.log")).unwrap();
     assert!(log.contains("projects/app/target"), "{log}");
 }
 
 #[test]
 fn pg_08_kinds_are_picked_and_unknown_kinds_refused() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let (home, built, ..) = purge_home();
 
-    let typo = home.molt(&["purge", "--only", "rust", "--yes"], &[]);
+    let typo = home.onyx(&["purge", "--only", "rust", "--yes"], &[]);
     assert_eq!(typo.status.code(), Some(2));
-    let other = home.molt(&["purge", "--only", "node", "--yes"], &[]);
+    let other = home.onyx(&["purge", "--only", "node", "--yes"], &[]);
     assert!(other.status.success(), "{}", stderr(&other));
     assert!(exists(&built));
 
-    let trashed = home.molt(&["purge", "--trash", "--yes"], &[]);
+    let trashed = home.onyx(&["purge", "--trash", "--yes"], &[]);
     assert!(trashed.status.success(), "{}", stderr(&trashed));
     assert!(!exists(&built));
     assert!(exists(
@@ -1145,7 +1145,7 @@ fn installer_home() -> (Home, Vec<PathBuf>, Vec<PathBuf>) {
 #[test]
 fn in_01_scan_and_clean_never_see_installers() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let (home, old, _) = installer_home();
 
@@ -1159,24 +1159,24 @@ fn in_01_scan_and_clean_never_see_installers() {
 #[test]
 fn in_05_p_05_dry_run_and_no_change_nothing() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let (home, ..) = installer_home();
     let before = snapshot(&home.path);
 
-    let dry = home.molt(&["installer", "--dry-run"], &[]);
+    let dry = home.onyx(&["installer", "--dry-run"], &[]);
     assert!(dry.status.success(), "{}", stderr(&dry));
     let text = stdout(&dry);
     assert!(text.contains("Installers"), "{text}");
     assert!(text.contains("(to trash)"), "{text}");
-    assert!(text.contains("with `molt installer`"), "{text}");
+    assert!(text.contains("with `onyx installer`"), "{text}");
     assert!(
         text.contains("Left out 1 installers: changed in the last 14 days"),
         "{text}"
     );
     assert_eq!(snapshot(&home.path), before);
 
-    let piped = home.molt(&["installer"], &[]);
+    let piped = home.onyx(&["installer"], &[]);
     assert_eq!(piped.status.code(), Some(1), "no terminal needs --yes");
     assert_eq!(snapshot(&home.path), before);
 }
@@ -1184,11 +1184,11 @@ fn in_05_p_05_dry_run_and_no_change_nothing() {
 #[test]
 fn in_02_in_03_in_04_yes_trashes_only_old_files() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let (home, old, kept) = installer_home();
 
-    let out = home.molt(&["installer", "--yes"], &[]);
+    let out = home.onyx(&["installer", "--yes"], &[]);
     assert!(out.status.success(), "{}\n{}", stdout(&out), stderr(&out));
     for path in &old {
         assert!(!exists(path), "{}", path.display());
@@ -1205,13 +1205,13 @@ fn in_02_in_03_in_04_yes_trashes_only_old_files() {
 #[test]
 fn in_01_in_04_rules_are_picked_and_permanent_deletes() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let (home, old, _) = installer_home();
 
-    let typo = home.molt(&["installer", "--only", "deb", "--yes"], &[]);
+    let typo = home.onyx(&["installer", "--only", "deb", "--yes"], &[]);
     assert_eq!(typo.status.code(), Some(2));
-    let out = home.molt(
+    let out = home.onyx(
         &[
             "installer",
             "--only",
@@ -1230,7 +1230,7 @@ fn in_01_in_04_rules_are_picked_and_permanent_deletes() {
 #[test]
 fn an_06_an_09_p_05_analyze_lists_largest_first_and_changes_nothing() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.file("data/big/file", 256 * 1024);
@@ -1238,7 +1238,7 @@ fn an_06_an_09_p_05_analyze_lists_largest_first_and_changes_nothing() {
     let data = home.path.join("data");
     let before = snapshot(&home.path);
 
-    let out = home.molt(&["analyze", data.to_str().unwrap(), "--depth", "2"], &[]);
+    let out = home.onyx(&["analyze", data.to_str().unwrap(), "--depth", "2"], &[]);
     assert!(out.status.success(), "{}", stderr(&out));
     let text = stdout(&out);
     let lines: Vec<&str> = text.lines().collect();
@@ -1247,7 +1247,7 @@ fn an_06_an_09_p_05_analyze_lists_largest_first_and_changes_nothing() {
     assert!(lines[2].ends_with("    file"), "{text}");
     assert!(lines[3].ends_with("  small"), "{text}");
 
-    let dry = home.molt(&["analyze", data.to_str().unwrap(), "--dry-run"], &[]);
+    let dry = home.onyx(&["analyze", data.to_str().unwrap(), "--dry-run"], &[]);
     assert!(dry.status.success(), "{}", stderr(&dry));
     assert!(!stderr(&dry).contains("dry run"), "{}", stderr(&dry));
     assert_eq!(snapshot(&home.path), before);
@@ -1256,13 +1256,13 @@ fn an_06_an_09_p_05_analyze_lists_largest_first_and_changes_nothing() {
 #[test]
 fn an_08_analyze_json_has_the_stable_shape() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.file("data/a/b", 4096);
     let data = home.path.join("data");
 
-    let out = home.molt(&["analyze", data.to_str().unwrap(), "--json"], &[]);
+    let out = home.onyx(&["analyze", data.to_str().unwrap(), "--json"], &[]);
     assert!(out.status.success(), "{}", stderr(&out));
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(json["name"], data.to_str().unwrap());
@@ -1277,7 +1277,7 @@ fn an_08_analyze_json_has_the_stable_shape() {
 #[test]
 fn an_03_an_05_partial_exits_3_and_a_bad_path_exits_1() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let file = home.file("data/locked/x", 10);
@@ -1285,20 +1285,20 @@ fn an_03_an_05_partial_exits_3_and_a_bad_path_exits_1() {
     fs::set_permissions(locked, fs::Permissions::from_mode(0o000)).unwrap();
     let data = home.path.join("data");
 
-    let partial = home.molt(&["analyze", data.to_str().unwrap()], &[]);
+    let partial = home.onyx(&["analyze", data.to_str().unwrap()], &[]);
     fs::set_permissions(locked, fs::Permissions::from_mode(0o755)).unwrap();
     assert_eq!(partial.status.code(), Some(3), "{}", stderr(&partial));
     assert!(stdout(&partial).contains("+"), "{}", stdout(&partial));
 
-    let missing = home.molt(&["analyze", "/nonexistent/molt-test"], &[]);
+    let missing = home.onyx(&["analyze", "/nonexistent/onyx-test"], &[]);
     assert_eq!(missing.status.code(), Some(1));
-    assert!(stderr(&missing).contains("/nonexistent/molt-test"));
-    let not_dir = home.molt(&["analyze", file.to_str().unwrap()], &[]);
+    assert!(stderr(&missing).contains("/nonexistent/onyx-test"));
+    let not_dir = home.onyx(&["analyze", file.to_str().unwrap()], &[]);
     assert_eq!(not_dir.status.code(), Some(1));
     assert!(stderr(&not_dir).contains("not a directory"));
 }
 
-/// Runs `molt analyze <dir> <args>` in a pseudo-terminal; see `molt_pty`.
+/// Runs `onyx analyze <dir> <args>` in a pseudo-terminal; see `onyx_pty`.
 fn browse_tty(
     home: &Home,
     dir: &Path,
@@ -1306,7 +1306,7 @@ fn browse_tty(
     keys: &[&str],
     env: &[(&str, &str)],
 ) -> Option<(Option<i32>, String)> {
-    molt_pty(
+    onyx_pty(
         home,
         &format!("analyze {} {args}", dir.display()),
         keys,
@@ -1314,10 +1314,10 @@ fn browse_tty(
     )
 }
 
-/// Runs `molt <args>` in a pseudo-terminal under a timeout, typing each chunk of `keys`
+/// Runs `onyx <args>` in a pseudo-terminal under a timeout, typing each chunk of `keys`
 /// after a pause, and gives the exit code and all it wrote. `None` where script(1) or
 /// timeout(1) is missing.
-fn molt_pty(
+fn onyx_pty(
     home: &Home,
     args: &str,
     keys: &[&str],
@@ -1327,7 +1327,7 @@ fn molt_pty(
     if !script.exists() || !timeout.exists() {
         return None;
     }
-    let command = format!("{} {args}", env!("CARGO_BIN_EXE_molt"));
+    let command = format!("{} {args}", env!("CARGO_BIN_EXE_onyx"));
     // A stuck screen or script(1) must fail the test, not hang it.
     let mut child = Command::new(timeout)
         .arg("20")
@@ -1344,7 +1344,7 @@ fn molt_pty(
     use std::io::Write;
     let mut stdin = child.stdin.take().unwrap();
     for chunk in keys {
-        // Keys typed before molt switches to raw mode, or mid-measure, would be lost.
+        // Keys typed before onyx switches to raw mode, or mid-measure, would be lost.
         std::thread::sleep(std::time::Duration::from_millis(400));
         stdin.write_all(chunk.as_bytes()).unwrap();
     }
@@ -1365,7 +1365,7 @@ fn restored(screen: &str) -> bool {
 #[test]
 fn an_10_an_13_an_15_the_browser_navigates_and_restores_the_terminal() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.file("data/big/inner-file", 256 * 1024);
@@ -1391,7 +1391,7 @@ fn an_10_an_13_an_15_the_browser_navigates_and_restores_the_terminal() {
 #[test]
 fn an_20_an_21_an_22_a_marked_folder_goes_to_the_trash_after_the_preview_and_y() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let inside = home.file("data/big/inner-file", 256 * 1024);
@@ -1419,14 +1419,14 @@ fn an_20_an_21_an_22_a_marked_folder_goes_to_the_trash_after_the_preview_and_y()
     assert!(exists(&small), "only the marked item moved");
     assert!(restored(&screen), "{screen:?}");
     // AN-24
-    let log = fs::read_to_string(home.path.join(".local/state/molt/operations.log")).unwrap();
+    let log = fs::read_to_string(home.path.join(".local/state/onyx/operations.log")).unwrap();
     assert!(log.contains("data/big"), "{log}");
 }
 
 #[test]
 fn an_21_p_05_no_or_a_dry_run_changes_nothing() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.file("data/big/inner-file", 256 * 1024);
@@ -1440,7 +1440,7 @@ fn an_21_p_05_no_or_a_dry_run_changes_nothing() {
     assert!(screen.contains("Move 1 items"), "{screen:?}");
     assert_eq!(snapshot(&home.path), before, "no");
 
-    for (args, env) in [("--dry-run", &[][..]), ("", &[("MOLT_DRY_RUN", "1")][..])] {
+    for (args, env) in [("--dry-run", &[][..]), ("", &[("ONYX_DRY_RUN", "1")][..])] {
         let (code, screen) = browse_tty(&home, &data, args, &["d", "y", "x", "q"], env).unwrap();
         assert_eq!(code, Some(0), "{screen:?}");
         assert!(screen.contains("would-trash"), "{screen:?}");
@@ -1453,7 +1453,7 @@ fn an_21_p_05_no_or_a_dry_run_changes_nothing() {
 #[test]
 fn an_20_an_23_protected_items_are_refused_in_the_preview() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let key = home.file(".ssh/id_ed25519", 400 * 1024);
@@ -1477,13 +1477,13 @@ fn an_20_an_23_protected_items_are_refused_in_the_preview() {
 #[test]
 fn st_01_st_06_st_08_status_reports_and_changes_nothing() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let before = snapshot(&home.path);
 
     for args in [&["status"][..], &["status", "--dry-run"][..]] {
-        let out = home.molt(args, &[]);
+        let out = home.onyx(args, &[]);
         assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
         let text = stdout(&out);
         for section in ["CPU", "Memory", "Disks", "Processes"] {
@@ -1500,9 +1500,9 @@ fn st_01_st_06_st_08_status_reports_and_changes_nothing() {
 #[test]
 fn st_07_status_json_has_the_stable_shape() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
-    let out = Home::new().molt(&["status", "--json"], &[]);
+    let out = Home::new().onyx(&["status", "--json"], &[]);
     assert!(out.status.success(), "{}", stderr(&out));
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(json["cpu"]["count"].as_u64().unwrap() >= 1, "{json}");
@@ -1525,14 +1525,14 @@ fn st_07_status_json_has_the_stable_shape() {
 #[test]
 fn st_15_st_16_st_17_st_19_watch_refreshes_pauses_and_restores_the_terminal() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let before = snapshot(&home.path);
 
     // Waits past one 1 s refresh, pauses, then quits.
     let keys = ["", "", "", "p", "q"];
-    let Some((code, screen)) = molt_pty(&home, "status --watch --interval 1", &keys, &[]) else {
+    let Some((code, screen)) = onyx_pty(&home, "status --watch --interval 1", &keys, &[]) else {
         return eprintln!("skipped: script(1) or timeout(1) isn't installed");
     };
     assert_eq!(code, Some(0), "{screen}");
@@ -1546,14 +1546,14 @@ fn st_15_st_16_st_17_st_19_watch_refreshes_pauses_and_restores_the_terminal() {
 #[test]
 fn st_18_watch_needs_a_terminal_and_no_json() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     for (args, why) in [
         (&["status", "--watch"][..], "needs a terminal"),
         (&["status", "--watch", "--json"][..], "--json"),
     ] {
-        let out = home.molt(args, &[]);
+        let out = home.onyx(args, &[]);
         assert_eq!(out.status.code(), Some(2), "{args:?}");
         assert!(stderr(&out).contains(why), "{args:?}: {}", stderr(&out));
     }
@@ -1561,7 +1561,7 @@ fn st_18_watch_needs_a_terminal_and_no_json() {
         &["status", "--interval", "5"][..],
         &["status", "--watch", "--interval", "0"][..],
     ] {
-        assert_eq!(home.molt(args, &[]).status.code(), Some(2), "{args:?}");
+        assert_eq!(home.onyx(args, &[]).status.code(), Some(2), "{args:?}");
     }
 }
 
@@ -1590,7 +1590,7 @@ fn uninstall_home() -> (Home, Vec<PathBuf>, PathBuf, Vec<PathBuf>) {
 #[test]
 fn un_01_un_03_bad_and_shared_names_are_usage_errors() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let (home, ..) = uninstall_home();
     home.file(".local/share/Trash/files/old", 4096);
@@ -1602,9 +1602,9 @@ fn un_01_un_03_bad_and_shared_names_are_usage_errors() {
         "f*",
         "applications",
         "Trash",
-        "molt",
+        "onyx",
     ] {
-        let out = home.molt(&["uninstall", name, "--yes"], &[]);
+        let out = home.onyx(&["uninstall", name, "--yes"], &[]);
         assert_eq!(out.status.code(), Some(2), "{name}: {}", stdout(&out));
         assert!(stderr(&out).contains("nothing changed"), "{}", stderr(&out));
     }
@@ -1614,24 +1614,24 @@ fn un_01_un_03_bad_and_shared_names_are_usage_errors() {
 #[test]
 fn un_06_un_07_p_05_dry_run_and_no_terminal_change_nothing() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let (home, ..) = uninstall_home();
     let before = snapshot(&home.path);
 
-    let dry = home.molt(&["uninstall", "foo", "--dry-run"], &[]);
+    let dry = home.onyx(&["uninstall", "foo", "--dry-run"], &[]);
     assert!(dry.status.success(), "{}", stderr(&dry));
     let text = stdout(&dry);
-    assert!(text.contains("with `molt uninstall foo`"), "{text}");
+    assert!(text.contains("with `onyx uninstall foo`"), "{text}");
     assert!(text.contains("(to trash)"), "{text}");
     assert!(text.contains("foo itself isn't removed"), "{text}");
     assert_eq!(snapshot(&home.path), before);
 
-    let piped = home.molt(&["uninstall", "foo"], &[]);
+    let piped = home.onyx(&["uninstall", "foo"], &[]);
     assert_eq!(piped.status.code(), Some(1), "no terminal needs --yes");
     assert_eq!(snapshot(&home.path), before);
 
-    let none = home.molt(&["uninstall", "nothing-here", "--yes"], &[]);
+    let none = home.onyx(&["uninstall", "nothing-here", "--yes"], &[]);
     assert!(none.status.success(), "{}", stderr(&none));
     assert!(
         stdout(&none).contains("Nothing of nothing-here in your home"),
@@ -1644,11 +1644,11 @@ fn un_06_un_07_p_05_dry_run_and_no_terminal_change_nothing() {
 #[test]
 fn un_02_un_05_yes_trashes_settings_and_deletes_the_cache() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let (home, leftovers, cache, kept) = uninstall_home();
 
-    let out = home.molt(&["uninstall", "foo", "--yes"], &[]);
+    let out = home.onyx(&["uninstall", "foo", "--yes"], &[]);
     assert!(out.status.success(), "{}\n{}", stdout(&out), stderr(&out));
     for path in leftovers.iter().chain([&cache]) {
         assert!(!exists(path), "{}", path.display());
@@ -1668,11 +1668,11 @@ fn un_02_un_05_yes_trashes_settings_and_deletes_the_cache() {
 #[test]
 fn un_05_permanent_puts_nothing_in_the_trash() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let (home, leftovers, cache, _) = uninstall_home();
 
-    let out = home.molt(&["uninstall", "foo", "--permanent", "--yes"], &[]);
+    let out = home.onyx(&["uninstall", "foo", "--permanent", "--yes"], &[]);
     assert!(out.status.success(), "{}", stderr(&out));
     for path in leftovers.iter().chain([&cache]) {
         assert!(!exists(path), "{}", path.display());
@@ -1683,26 +1683,26 @@ fn un_05_permanent_puts_nothing_in_the_trash() {
 #[test]
 fn un_04_a_running_app_is_left_alone() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
-    let settings = home.file(".config/molt-busy-app/settings", 4096);
-    let busy = home.path.join("molt-busy-app");
+    let settings = home.file(".config/onyx-busy-app/settings", 4096);
+    let busy = home.path.join("onyx-busy-app");
     fs::copy("/bin/sh", &busy).unwrap();
     let mut program = spawn_fresh_copy(Command::new(&busy).args(["-c", "read line"]));
     let comm = format!("/proc/{}/comm", program.id());
-    while !fs::read_to_string(&comm).is_ok_and(|c| c.trim_end() == "molt-busy-app") {
+    while !fs::read_to_string(&comm).is_ok_and(|c| c.trim_end() == "onyx-busy-app") {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 
-    let out = home.molt(&["uninstall", "molt-busy-app", "--yes"], &[]);
+    let out = home.onyx(&["uninstall", "onyx-busy-app", "--yes"], &[]);
     program.kill().unwrap();
     program.wait().unwrap();
 
     assert!(out.status.success(), "{}", stderr(&out));
     assert!(exists(&settings));
     assert!(
-        stdout(&out).contains("quit molt-busy-app first"),
+        stdout(&out).contains("quit onyx-busy-app first"),
         "{}",
         stdout(&out)
     );
@@ -1766,7 +1766,7 @@ fn package_home() -> (Home, Vec<PathBuf>) {
 #[test]
 fn un_08_un_10_p_05_a_dry_run_previews_the_package_and_never_runs_sudo() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let (home, _) = package_home();
     let pacman = fake_pacman(0);
@@ -1774,7 +1774,7 @@ fn un_08_un_10_p_05_a_dry_run_previews_the_package_and_never_runs_sudo() {
     let bin = tools.bin();
     let before = snapshot(&home.path);
 
-    let out = home.molt(&["uninstall", "foo", "--dry-run"], &[("PATH", bin)]);
+    let out = home.onyx(&["uninstall", "foo", "--dry-run"], &[("PATH", bin)]);
     assert!(out.status.success(), "{}", stderr(&out));
     let text = stdout(&out);
     assert!(text.contains("foo (pacman)"), "{text}");
@@ -1796,14 +1796,14 @@ fn un_08_un_10_p_05_a_dry_run_previews_the_package_and_never_runs_sudo() {
 #[test]
 fn un_08_the_package_that_owns_the_program_on_path_is_found() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let pacman = fake_pacman(0);
     let tools = FakeTools::new(&[FAKE_SUDO, ("pacman", &pacman), ("bar", "exit 0")]);
     let bin = tools.bin();
 
-    let out = home.molt(&["uninstall", "bar", "--dry-run"], &[("PATH", bin)]);
+    let out = home.onyx(&["uninstall", "bar", "--dry-run"], &[("PATH", bin)]);
     assert!(out.status.success(), "{}", stderr(&out));
     let text = stdout(&out);
     assert!(text.contains("bar-pkg (pacman)"), "{text}");
@@ -1813,7 +1813,7 @@ fn un_08_the_package_that_owns_the_program_on_path_is_found() {
     );
     assert!(tools.ran().contains(&format!("pacman -Qqo {bin}/bar\n")));
 
-    let none = home.molt(&["uninstall", "nobody", "--dry-run"], &[("PATH", bin)]);
+    let none = home.onyx(&["uninstall", "nobody", "--dry-run"], &[("PATH", bin)]);
     assert!(
         stdout(&none).contains("nobody itself isn't removed"),
         "{}",
@@ -1824,14 +1824,14 @@ fn un_08_the_package_that_owns_the_program_on_path_is_found() {
 #[test]
 fn un_11_un_13_yes_removes_the_package_then_the_leftovers() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let (home, leftovers) = package_home();
     let pacman = fake_pacman(0);
     let tools = FakeTools::new(&[FAKE_SUDO, ("pacman", &pacman)]);
     let bin = tools.bin();
 
-    let out = home.molt(&["uninstall", "foo", "--yes", "--json"], &[("PATH", bin)]);
+    let out = home.onyx(&["uninstall", "foo", "--yes", "--json"], &[("PATH", bin)]);
     assert!(out.status.success(), "{}\n{}", stdout(&out), stderr(&out));
     let sudo: Vec<String> = tools
         .ran()
@@ -1862,13 +1862,13 @@ fn un_11_un_13_yes_removes_the_package_then_the_leftovers() {
 #[test]
 fn un_12_a_failed_removal_keeps_the_leftovers() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let (home, leftovers) = package_home();
     let pacman = fake_pacman(1);
     let tools = FakeTools::new(&[FAKE_SUDO, ("pacman", &pacman)]);
 
-    let out = home.molt(&["uninstall", "foo", "--yes"], &[("PATH", tools.bin())]);
+    let out = home.onyx(&["uninstall", "foo", "--yes"], &[("PATH", tools.bin())]);
     assert_eq!(out.status.code(), Some(3), "{}", stderr(&out));
     for path in &leftovers {
         assert!(exists(path), "{}", path.display());
@@ -1879,13 +1879,13 @@ fn un_12_a_failed_removal_keeps_the_leftovers() {
 #[test]
 fn un_15_without_sudo_only_the_leftovers_go() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let (home, leftovers) = package_home();
     let pacman = fake_pacman(0);
     let tools = FakeTools::new(&[("pacman", &pacman)]);
 
-    let out = home.molt(&["uninstall", "foo", "--yes"], &[("PATH", tools.bin())]);
+    let out = home.onyx(&["uninstall", "foo", "--yes"], &[("PATH", tools.bin())]);
     assert!(out.status.success(), "{}", stderr(&out));
     assert!(
         stdout(&out).contains("sudo isn't installed"),
@@ -1901,7 +1901,7 @@ fn un_15_without_sudo_only_the_leftovers_go() {
 #[test]
 fn un_08_un_11_apt_and_dnf_use_their_own_commands() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let dpkg = "[ \"$1\" = -W ] && [ \"$3\" = foo ] && printf 'install ok installed' || exit 1";
     let rpm = "[ \"$1\" = -q ] && [ \"$2\" = foo ] && echo foo-1.0-1.x86_64 || exit 1";
@@ -1918,7 +1918,7 @@ fn un_08_un_11_apt_and_dnf_use_their_own_commands() {
         let (home, _) = package_home();
         let tools = FakeTools::new(&tools);
         let bin = tools.bin();
-        let out = home.molt(&["uninstall", "foo", "--yes"], &[("PATH", bin)]);
+        let out = home.onyx(&["uninstall", "foo", "--yes"], &[("PATH", bin)]);
         assert!(out.status.success(), "{}", stderr(&out));
         assert!(
             tools.ran().contains(&format!("sudo -- {bin}/{removal}\n")),
@@ -1946,14 +1946,14 @@ const FAKE_SNAP: (&str, &str) = (
 #[test]
 fn un_16_un_17_un_19_a_user_flatpak_goes_without_sudo_and_its_data_to_the_trash() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let data = home.file(".var/app/org.example.App/config/app.conf", 4096);
     let tools = FakeTools::new(&[FAKE_SUDO, FAKE_FLATPAK]);
     let bin = tools.bin();
 
-    let dry = home.molt(
+    let dry = home.onyx(
         &["uninstall", "org.example.App", "--dry-run"],
         &[("PATH", bin)],
     );
@@ -1967,7 +1967,7 @@ fn un_16_un_17_un_19_a_user_flatpak_goes_without_sudo_and_its_data_to_the_trash(
     );
     assert!(exists(&data));
 
-    let out = home.molt(&["uninstall", "org.example.App", "--yes"], &[("PATH", bin)]);
+    let out = home.onyx(&["uninstall", "org.example.App", "--yes"], &[("PATH", bin)]);
     assert!(out.status.success(), "{}", stderr(&out));
     let ran = tools.ran();
     assert!(
@@ -1984,7 +1984,7 @@ fn un_16_un_17_un_19_a_user_flatpak_goes_without_sudo_and_its_data_to_the_trash(
 #[test]
 fn un_16_un_17_a_system_flatpak_and_a_snap_go_through_sudo() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     for (name, removal) in [
         (
@@ -1996,7 +1996,7 @@ fn un_16_un_17_a_system_flatpak_and_a_snap_go_through_sudo() {
         let home = Home::new();
         let tools = FakeTools::new(&[FAKE_SUDO, FAKE_FLATPAK, FAKE_SNAP]);
         let bin = tools.bin();
-        let out = home.molt(&["uninstall", name, "--yes"], &[("PATH", bin)]);
+        let out = home.onyx(&["uninstall", name, "--yes"], &[("PATH", bin)]);
         assert!(out.status.success(), "{}", stderr(&out));
         assert!(
             tools.ran().contains(&format!("sudo -- {bin}/{removal}\n")),
@@ -2009,7 +2009,7 @@ fn un_16_un_17_a_system_flatpak_and_a_snap_go_through_sudo() {
 #[test]
 fn un_19_un_20_un_21_appimages_icons_and_snap_data_are_leftovers() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let gone = [
@@ -2023,7 +2023,7 @@ fn un_19_un_20_un_21_appimages_icons_and_snap_data_are_leftovers() {
     fs::create_dir_all(link.parent().unwrap()).unwrap();
     symlink(&versioned, &link).unwrap();
 
-    let out = home.molt(&["uninstall", "foo", "--yes"], &[]);
+    let out = home.onyx(&["uninstall", "foo", "--yes"], &[]);
     assert!(out.status.success(), "{}\n{}", stdout(&out), stderr(&out));
     for path in &gone {
         assert!(!exists(path), "{}", path.display());
@@ -2040,7 +2040,7 @@ fn fake_orphan_pacman(removal: i32) -> String {
 #[test]
 fn op_03_op_07_p_05_a_dry_run_lists_the_orphans_and_never_runs_sudo() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let pacman = fake_orphan_pacman(0);
@@ -2048,7 +2048,7 @@ fn op_03_op_07_p_05_a_dry_run_lists_the_orphans_and_never_runs_sudo() {
     let bin = tools.bin();
     let before = snapshot(&home.path);
 
-    let out = home.molt(&["optimize", "--dry-run"], &[("PATH", bin)]);
+    let out = home.onyx(&["optimize", "--dry-run"], &[("PATH", bin)]);
     assert!(out.status.success(), "{}", stderr(&out));
     let text = stdout(&out);
     assert!(text.contains("    a\n    b\n"), "{text}");
@@ -2059,7 +2059,7 @@ fn op_03_op_07_p_05_a_dry_run_lists_the_orphans_and_never_runs_sudo() {
     assert_eq!(tools.ran(), "pacman -Qdtq\n");
     assert_eq!(snapshot(&home.path), before);
 
-    let piped = home.molt(&["optimize"], &[("PATH", bin)]);
+    let piped = home.onyx(&["optimize"], &[("PATH", bin)]);
     assert_eq!(piped.status.code(), Some(1), "no terminal needs --yes");
     assert!(!tools.ran().contains("sudo"));
 }
@@ -2067,7 +2067,7 @@ fn op_03_op_07_p_05_a_dry_run_lists_the_orphans_and_never_runs_sudo() {
 #[test]
 fn op_06_op_08_yes_removes_exactly_the_listed_packages() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let pacman = fake_orphan_pacman(0);
@@ -2078,7 +2078,7 @@ fn op_06_op_08_yes_removes_exactly_the_listed_packages() {
     ]);
     let bin = tools.bin();
 
-    let out = home.molt(&["optimize", "--yes", "--json"], &[("PATH", bin)]);
+    let out = home.onyx(&["optimize", "--yes", "--json"], &[("PATH", bin)]);
     assert!(out.status.success(), "{}", stderr(&out));
     let ran = tools.ran();
     let sudo: Vec<&str> = ran.lines().filter(|l| l.starts_with("sudo")).collect();
@@ -2110,7 +2110,7 @@ fn op_06_op_08_yes_removes_exactly_the_listed_packages() {
 #[test]
 fn op_04_op_05_unsafe_names_and_empty_lists_run_nothing() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     for (body, says) in [
         ("[ \"$1\" = -Qdtq ] && printf 'a\\n-Rdd\\n'", "left out"),
@@ -2118,7 +2118,7 @@ fn op_04_op_05_unsafe_names_and_empty_lists_run_nothing() {
     ] {
         let home = Home::new();
         let tools = FakeTools::new(&[FAKE_SUDO, ("pacman", body)]);
-        let out = home.molt(&["optimize", "--yes"], &[("PATH", tools.bin())]);
+        let out = home.onyx(&["optimize", "--yes"], &[("PATH", tools.bin())]);
         assert!(out.status.success(), "{}", stderr(&out));
         assert!(stdout(&out).contains(says), "{}", stdout(&out));
         assert!(!tools.ran().contains("sudo"), "{}", tools.ran());
@@ -2128,7 +2128,7 @@ fn op_04_op_05_unsafe_names_and_empty_lists_run_nothing() {
 #[test]
 fn op_01_op_02_op_08_tasks_are_picked_and_a_failure_doesnt_stop_the_next() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let pacman = fake_orphan_pacman(1);
@@ -2136,13 +2136,13 @@ fn op_01_op_02_op_08_tasks_are_picked_and_a_failure_doesnt_stop_the_next() {
     let tools = FakeTools::new(&[FAKE_SUDO, ("pacman", &pacman), ("dnf", dnf)]);
     let bin = tools.bin();
 
-    let typo = home.molt(
+    let typo = home.onyx(
         &["optimize", "--only", "orphans", "--yes"],
         &[("PATH", bin)],
     );
     assert_eq!(typo.status.code(), Some(2));
 
-    let out = home.molt(&["optimize", "--yes"], &[("PATH", bin)]);
+    let out = home.onyx(&["optimize", "--yes"], &[("PATH", bin)]);
     assert_eq!(out.status.code(), Some(3), "{}", stderr(&out));
     assert!(
         tools
@@ -2152,7 +2152,7 @@ fn op_01_op_02_op_08_tasks_are_picked_and_a_failure_doesnt_stop_the_next() {
         tools.ran()
     );
 
-    let only = home.molt(
+    let only = home.onyx(
         &["optimize", "--only", "dnf-autoremove", "--dry-run"],
         &[("PATH", bin)],
     );
@@ -2160,7 +2160,7 @@ fn op_01_op_02_op_08_tasks_are_picked_and_a_failure_doesnt_stop_the_next() {
 
     // OP-02: no sudo, no tasks.
     let no_sudo = FakeTools::new(&[("pacman", &pacman)]);
-    let out = home.molt(&["optimize", "--yes"], &[("PATH", no_sudo.bin())]);
+    let out = home.onyx(&["optimize", "--yes"], &[("PATH", no_sudo.bin())]);
     assert!(out.status.success(), "{}", stderr(&out));
     assert!(stdout(&out).contains("Inactive"), "{}", stdout(&out));
     assert!(!no_sudo.ran().contains("-Rns"));
@@ -2174,7 +2174,7 @@ const FAKE_RESOLVECTL: (&str, &str) = (
 #[test]
 fn op_09_op_10_p_05_a_dry_run_runs_only_the_dns_statistics() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let tools = FakeTools::new(&[
@@ -2185,7 +2185,7 @@ fn op_09_op_10_p_05_a_dry_run_runs_only_the_dns_statistics() {
     ]);
     let bin = tools.bin();
 
-    let out = home.molt(&["optimize", "--dry-run"], &[("PATH", bin)]);
+    let out = home.onyx(&["optimize", "--dry-run"], &[("PATH", bin)]);
     assert!(out.status.success(), "{}", stderr(&out));
     let text = stdout(&out);
     assert!(
@@ -2211,7 +2211,7 @@ fn op_09_op_10_p_05_a_dry_run_runs_only_the_dns_statistics() {
 #[test]
 fn op_11_op_14_yes_runs_each_in_order_and_font_cache_without_sudo() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let tools = FakeTools::new(&[
@@ -2222,7 +2222,7 @@ fn op_11_op_14_yes_runs_each_in_order_and_font_cache_without_sudo() {
     ]);
     let bin = tools.bin();
 
-    let out = home.molt(&["optimize", "--yes"], &[("PATH", bin)]);
+    let out = home.onyx(&["optimize", "--yes"], &[("PATH", bin)]);
     assert_eq!(
         out.status.code(),
         Some(3),
@@ -2249,7 +2249,7 @@ fn op_11_op_14_yes_runs_each_in_order_and_font_cache_without_sudo() {
 #[test]
 fn op_02_op_11_op_12_without_sudo_only_font_cache_and_no_resolved_no_dns() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let tools = FakeTools::new(&[
@@ -2257,13 +2257,13 @@ fn op_02_op_11_op_12_without_sudo_only_font_cache_and_no_resolved_no_dns() {
         ("fc-cache", "exit 0"),
         FAKE_RESOLVECTL,
     ]);
-    let out = home.molt(&["optimize", "--yes"], &[("PATH", tools.bin())]);
+    let out = home.onyx(&["optimize", "--yes"], &[("PATH", tools.bin())]);
     assert!(out.status.success(), "{}", stderr(&out));
     assert_eq!(tools.ran(), "fc-cache\n");
     assert!(stdout(&out).contains("Inactive"), "{}", stdout(&out));
 
     let tools = FakeTools::new(&[FAKE_SUDO, ("resolvectl", "exit 1")]);
-    let out = home.molt(&["optimize", "--yes"], &[("PATH", tools.bin())]);
+    let out = home.onyx(&["optimize", "--yes"], &[("PATH", tools.bin())]);
     assert!(out.status.success(), "{}", stderr(&out));
     assert!(stdout(&out).contains("left out"), "{}", stdout(&out));
     assert!(!tools.ran().contains("flush-caches"), "{}", tools.ran());
@@ -2285,7 +2285,7 @@ const FAKE_SMARTCTL: (&str, &str) = (
 #[test]
 fn op_15_op_16_op_17_checks_only_read_and_never_use_sudo() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let tools = FakeTools::new(&[FAKE_SUDO, FAKE_SYSTEMCTL, FAKE_SMARTCTL]);
@@ -2293,7 +2293,7 @@ fn op_15_op_16_op_17_checks_only_read_and_never_use_sudo() {
 
     for args in [&["optimize", "--dry-run"][..], &["optimize"][..]] {
         // No terminal and no --yes: checks alone never ask (OP-15).
-        let out = home.molt(args, &[("PATH", bin)]);
+        let out = home.onyx(args, &[("PATH", bin)]);
         assert!(out.status.success(), "{args:?}: {}", stderr(&out));
         let text = stdout(&out);
         assert!(text.contains("    bad.service\n"), "{text}");
@@ -2309,7 +2309,7 @@ fn op_15_op_16_op_17_checks_only_read_and_never_use_sudo() {
         assert!(disk.bytes().all(|b| b.is_ascii_alphanumeric()), "{line}");
     }
 
-    let skipped = home.molt(
+    let skipped = home.onyx(
         &["optimize", "--skip", "failed-units", "smart"],
         &[("PATH", bin)],
     );
@@ -2323,11 +2323,11 @@ fn op_15_op_16_op_17_checks_only_read_and_never_use_sudo() {
 #[test]
 fn op_20_json_lists_each_checks_lines() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let tools = FakeTools::new(&[FAKE_SYSTEMCTL]);
-    let out = home.molt(&["optimize", "--json"], &[("PATH", tools.bin())]);
+    let out = home.onyx(&["optimize", "--json"], &[("PATH", tools.bin())]);
     assert!(out.status.success(), "{}", stderr(&out));
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let task = &json["preview"]["tasks"][0];
@@ -2336,12 +2336,12 @@ fn op_20_json_lists_each_checks_lines() {
 }
 
 /// The banner's art, as BN-01 draws it.
-const BANNER_ART: &str = "|_| |_| |_|\\___/|_|\\__|";
+const BANNER_ART: &str = " \\___/|_| |_|\\__, /_/\\_\\";
 
 #[test]
 fn bn_03_no_banner_when_piped_with_json_or_for_version() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     for args in [
@@ -2351,7 +2351,7 @@ fn bn_03_no_banner_when_piped_with_json_or_for_version() {
         &["--json"][..],
         &["--version"][..],
     ] {
-        let out = home.molt(args, &[]);
+        let out = home.onyx(args, &[]);
         assert!(
             !stdout(&out).contains(BANNER_ART),
             "{args:?}: {}",
@@ -2364,10 +2364,10 @@ fn bn_03_no_banner_when_piped_with_json_or_for_version() {
 #[test]
 fn bn_02_bn_04_the_banner_tops_help_on_a_terminal_in_green() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
-    let Some((code, screen)) = molt_pty(&home, "--help", &[], &[]) else {
+    let Some((code, screen)) = onyx_pty(&home, "--help", &[], &[]) else {
         return eprintln!("skipped: script(1) or timeout(1) isn't installed");
     };
     assert_eq!(code, Some(0), "{screen}");
@@ -2378,21 +2378,21 @@ fn bn_02_bn_04_the_banner_tops_help_on_a_terminal_in_green() {
     assert!(art < usage, "{screen}");
     assert!(screen.contains("\x1b[32m"), "{screen:?}");
 
-    let (_, plain) = molt_pty(&home, "--help", &[], &[("NO_COLOR", "1")]).unwrap();
+    let (_, plain) = onyx_pty(&home, "--help", &[], &[("NO_COLOR", "1")]).unwrap();
     assert!(plain.contains(BANNER_ART), "{plain}");
     assert!(!plain.contains("\x1b[32m"), "{plain:?}");
 
-    let (_, scan) = molt_pty(&home, "scan", &[], &[]).unwrap();
+    let (_, scan) = onyx_pty(&home, "scan", &[], &[]).unwrap();
     assert!(!scan.contains(BANNER_ART), "a named subcommand: {scan}");
 }
 
-/// A temp home whose log has a real `molt installer --yes` run, then two command
+/// A temp home whose log has a real `onyx installer --yes` run, then two command
 /// entries and a corrupt line appended. Gives the home and the log's path.
 fn history_home() -> (Home, PathBuf) {
     let (home, ..) = installer_home();
-    let out = home.molt(&["installer", "--yes"], &[]);
+    let out = home.onyx(&["installer", "--yes"], &[]);
     assert!(out.status.success(), "{}", stderr(&out));
-    let log = home.path.join(".local/state/molt/operations.log");
+    let log = home.path.join(".local/state/onyx/operations.log");
     let mut text = fs::read_to_string(&log).unwrap();
     text.push_str(
         "{\"time\":\"2099-01-01T00:00:00Z\",\"command\":[\"/usr/bin/sudo\",\"--\",\"/usr/bin/fstrim\",\"--all\"],\"exit\":1,\"bytes\":0}\n\
@@ -2405,13 +2405,13 @@ fn history_home() -> (Home, PathBuf) {
 #[test]
 fn hi_01_hi_02_hi_05_hi_06_history_reads_newest_first_and_changes_nothing() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let (home, _) = history_home();
     let before = snapshot(&home.path);
 
     for args in [&["history"][..], &["history", "--dry-run"][..]] {
-        let out = home.molt(args, &[("TZ", "UTC")]);
+        let out = home.onyx(args, &[("TZ", "UTC")]);
         assert_eq!(
             out.status.code(),
             Some(3),
@@ -2435,11 +2435,11 @@ fn hi_01_hi_02_hi_05_hi_06_history_reads_newest_first_and_changes_nothing() {
 #[test]
 fn hi_03_hi_04_limit_since_and_bad_dates() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let (home, _) = history_home();
 
-    let one = home.molt(&["history", "--limit", "1"], &[]);
+    let one = home.onyx(&["history", "--limit", "1"], &[]);
     let text = stdout(&one);
     assert_eq!(
         text.lines()
@@ -2450,7 +2450,7 @@ fn hi_03_hi_04_limit_since_and_bad_dates() {
     );
     assert!(text.contains("6 older entries not shown"), "{text}");
 
-    let future = home.molt(&["history", "--since", "2098-12-31"], &[("TZ", "UTC")]);
+    let future = home.onyx(&["history", "--since", "2098-12-31"], &[("TZ", "UTC")]);
     assert_eq!(
         stdout(&future).matches("  trashed  ").count(),
         0,
@@ -2461,13 +2461,13 @@ fn hi_03_hi_04_limit_since_and_bad_dates() {
 
     for bad in ["2026-13-01", "yesterday"] {
         assert_eq!(
-            home.molt(&["history", "--since", bad], &[]).status.code(),
+            home.onyx(&["history", "--since", bad], &[]).status.code(),
             Some(2),
             "{bad}"
         );
     }
     assert_eq!(
-        home.molt(&["history", "--limit", "0"], &[]).status.code(),
+        home.onyx(&["history", "--limit", "0"], &[]).status.code(),
         Some(2)
     );
 }
@@ -2475,10 +2475,10 @@ fn hi_03_hi_04_limit_since_and_bad_dates() {
 #[test]
 fn hi_06_hi_07_json_and_an_empty_history() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let (home, _) = history_home();
-    let out = home.molt(&["history", "--json", "--limit", "2"], &[]);
+    let out = home.onyx(&["history", "--json", "--limit", "2"], &[]);
     assert_eq!(out.status.code(), Some(3));
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(json["entries"].as_array().unwrap().len(), 2, "{json}");
@@ -2489,7 +2489,7 @@ fn hi_06_hi_07_json_and_an_empty_history() {
 
     let empty = Home::new();
     let before = snapshot(&empty.path);
-    let out = empty.molt(&["history"], &[]);
+    let out = empty.onyx(&["history"], &[]);
     assert!(out.status.success(), "{}", stderr(&out));
     assert!(
         stdout(&out).contains("Nothing in the history yet"),
@@ -2499,14 +2499,14 @@ fn hi_06_hi_07_json_and_an_empty_history() {
     assert_eq!(snapshot(&empty.path), before, "no state folder is created");
 }
 
-/// Completes `line` (words, the last one being completed) with molt's bash script.
+/// Completes `line` (words, the last one being completed) with onyx's bash script.
 fn bash_complete(home: &Home, line: &str) -> Vec<String> {
-    let script = home.path.join("molt.bash");
-    fs::write(&script, stdout(&home.molt(&["completions", "bash"], &[]))).unwrap();
+    let script = home.path.join("onyx.bash");
+    fs::write(&script, stdout(&home.onyx(&["completions", "bash"], &[]))).unwrap();
     let program = format!(
         "source '{}'\nCOMP_WORDS=({line})\nCOMP_CWORD=$((${{#COMP_WORDS[@]}} - 1))\n\
          [[ '{line}' == *' ' ]] && COMP_CWORD=${{#COMP_WORDS[@]}} && COMP_WORDS+=('')\n\
-         _molt\nprintf '%s\\n' \"${{COMPREPLY[@]}}\"",
+         _onyx\nprintf '%s\\n' \"${{COMPREPLY[@]}}\"",
         script.display()
     );
     let out = Command::new("/usr/bin/bash")
@@ -2522,13 +2522,13 @@ fn bash_complete(home: &Home, line: &str) -> Vec<String> {
 #[test]
 fn co_01_co_02_co_03_bash_completes_commands_flags_and_ids() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     if !Path::new("/usr/bin/bash").exists() {
         return eprintln!("skipped: bash isn't installed");
     }
     let home = Home::new();
-    let out = home.molt(&["completions", "bash"], &[]);
+    let out = home.onyx(&["completions", "bash"], &[]);
     assert!(out.status.success(), "{}", stderr(&out));
     let check = Command::new("/usr/bin/bash")
         .args(["-n", "-c", &stdout(&out)])
@@ -2536,33 +2536,33 @@ fn co_01_co_02_co_03_bash_completes_commands_flags_and_ids() {
         .unwrap();
     assert!(check.status.success(), "bash -n: {}", stderr(&check));
 
-    assert_eq!(bash_complete(&home, "molt cl"), ["clean"]);
+    assert_eq!(bash_complete(&home, "onyx cl"), ["clean"]);
     assert_eq!(
-        bash_complete(&home, "molt system --only "),
+        bash_complete(&home, "onyx system --only "),
         ["pacman-cache", "journal", "coredumps"]
     );
-    assert_eq!(bash_complete(&home, "molt purge --skip c"), ["cargo"]);
-    assert!(bash_complete(&home, "molt clean --dr").contains(&"--dry-run".to_owned()));
-    assert_eq!(bash_complete(&home, "molt completions f"), ["fish"]);
-    assert!(bash_complete(&home, "molt optimize --only ").contains(&"dns-cache".to_owned()));
+    assert_eq!(bash_complete(&home, "onyx purge --skip c"), ["cargo"]);
+    assert!(bash_complete(&home, "onyx clean --dr").contains(&"--dry-run".to_owned()));
+    assert_eq!(bash_complete(&home, "onyx completions f"), ["fish"]);
+    assert!(bash_complete(&home, "onyx optimize --only ").contains(&"dns-cache".to_owned()));
 }
 
 #[test]
 fn co_01_unknown_shells_exit_2_and_a_broken_config_still_completes() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     assert_eq!(
-        home.molt(&["completions", "tcsh"], &[]).status.code(),
+        home.onyx(&["completions", "tcsh"], &[]).status.code(),
         Some(2)
     );
     home.config("this is not toml");
     let before = snapshot(&home.path);
     for shell in ["bash", "zsh", "fish"] {
-        let out = home.molt(&["completions", shell], &[]);
+        let out = home.onyx(&["completions", shell], &[]);
         assert!(out.status.success(), "{shell}: {}", stderr(&out));
-        assert!(stdout(&out).contains("molt"), "{shell}");
+        assert!(stdout(&out).contains("onyx"), "{shell}");
     }
     assert_eq!(snapshot(&home.path), before);
 }
@@ -2570,7 +2570,7 @@ fn co_01_unknown_shells_exit_2_and_a_broken_config_still_completes() {
 #[test]
 fn co_04_zsh_and_fish_scripts_parse_where_installed() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     for (shell, check) in [("zsh", &["-n"][..]), ("fish", &["--no-execute"][..])] {
@@ -2582,8 +2582,8 @@ fn co_04_zsh_and_fish_scripts_parse_where_installed() {
             eprintln!("skipped: {shell} isn't installed");
             continue;
         };
-        let script = home.path.join(format!("molt.{shell}"));
-        fs::write(&script, stdout(&home.molt(&["completions", shell], &[]))).unwrap();
+        let script = home.path.join(format!("onyx.{shell}"));
+        fs::write(&script, stdout(&home.onyx(&["completions", shell], &[]))).unwrap();
         let out = Command::new(path)
             .args(check)
             .arg(&script)
@@ -2594,11 +2594,11 @@ fn co_04_zsh_and_fish_scripts_parse_where_installed() {
 }
 
 #[test]
-fn mn_01_a_piped_bare_molt_is_still_a_scan() {
+fn mn_01_a_piped_bare_onyx_is_still_a_scan() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
-    let out = Home::new().molt(&[], &[]);
+    let out = Home::new().onyx(&[], &[]);
     assert!(out.status.success(), "{}", stderr(&out));
     assert!(stdout(&out).contains("Total"), "{}", stdout(&out));
     assert!(!stdout(&out).contains("Enter run"), "{}", stdout(&out));
@@ -2607,11 +2607,11 @@ fn mn_01_a_piped_bare_molt_is_still_a_scan() {
 #[test]
 fn mn_01_mn_02_the_menu_opens_on_a_terminal_and_q_restores_it() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let before = snapshot(&home.path);
-    let Some((code, screen)) = molt_pty(&home, "", &["j", "q"], &[]) else {
+    let Some((code, screen)) = onyx_pty(&home, "", &["j", "q"], &[]) else {
         return eprintln!("skipped: script(1) or timeout(1) isn't installed");
     };
     assert_eq!(code, Some(0), "{screen}");
@@ -2624,7 +2624,7 @@ fn mn_01_mn_02_the_menu_opens_on_a_terminal_and_q_restores_it() {
 #[test]
 fn mn_03_mn_04_p_05_a_picked_command_runs_as_typed_and_comes_back() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     home.rules(PLAIN_JUNK_RULE);
@@ -2632,7 +2632,7 @@ fn mn_03_mn_04_p_05_a_picked_command_runs_as_typed_and_comes_back() {
     let before = snapshot(&home.path);
 
     // Clean, under --dry-run: the preview, the dry-run stop, Enter, then quit.
-    let Some((code, screen)) = molt_pty(&home, "--dry-run", &["j", "\r", "\r", "q"], &[]) else {
+    let Some((code, screen)) = onyx_pty(&home, "--dry-run", &["j", "\r", "\r", "q"], &[]) else {
         return eprintln!("skipped: script(1) or timeout(1) isn't installed");
     };
     assert_eq!(code, Some(0), "{screen}");
@@ -2650,15 +2650,15 @@ fn mn_03_mn_04_p_05_a_picked_command_runs_as_typed_and_comes_back() {
 
     // Uninstall with an empty name goes straight back.
     let keys = ["jjjj", "\r", "\r", "q"];
-    let (code, screen) = molt_pty(&home, "", &keys, &[]).unwrap();
+    let (code, screen) = onyx_pty(&home, "", &keys, &[]).unwrap();
     assert_eq!(code, Some(0), "{screen}");
     assert!(screen.contains("App to uninstall"), "{screen}");
     assert_eq!(snapshot(&home.path), before);
 }
 
-/// A signed fake release `v9.9.9` for `molt update`, built with a test key, real `tar`,
+/// A signed fake release `v9.9.9` for `onyx update`, built with a test key, real `tar`,
 /// `sha256sum` and `ssh-keygen`, and served by a fake `curl`. `pack` fills the release's
-/// top folder before the default `molt` (if it made none), packing and signing; `tamper` changes the release after. `None`
+/// top folder before the default `onyx` (if it made none), packing and signing; `tamper` changes the release after. `None`
 /// where those tools aren't installed.
 struct FakeRelease {
     dir: TempDir,
@@ -2697,17 +2697,17 @@ impl FakeRelease {
         let public = fs::read_to_string(root.join("key.pub")).unwrap();
         fs::write(
             root.join("signers"),
-            format!("tester namespaces=\"molt-release\" {public}"),
+            format!("tester namespaces=\"onyx-release\" {public}"),
         )
         .unwrap();
 
-        let top = format!("molt-{FAKE_TAG}-x86_64-unknown-linux-musl");
+        let top = format!("onyx-{FAKE_TAG}-x86_64-unknown-linux-musl");
         let release = root.join("release");
         fs::create_dir_all(release.join(&top)).unwrap();
         pack(&release.join(&top));
-        let new = release.join(&top).join("molt");
+        let new = release.join(&top).join("onyx");
         if !exists(&new) {
-            fs::write(&new, "#!/bin/sh\necho 'molt 9.9.9'\n").unwrap();
+            fs::write(&new, "#!/bin/sh\necho 'onyx 9.9.9'\n").unwrap();
             fs::set_permissions(&new, fs::Permissions::from_mode(0o755)).unwrap();
         }
         fs::write(release.join(&top).join("README.md"), "readme").unwrap();
@@ -2733,7 +2733,7 @@ impl FakeRelease {
             "-f",
             key.to_str().unwrap(),
             "-n",
-            "molt-release",
+            "onyx-release",
             &format!("{tarball}.sha256"),
         ]);
         tamper(&release, &tarball);
@@ -2750,7 +2750,7 @@ impl FakeRelease {
              *) url=\"$1\" ;;\n\
              esac; shift; done\n\
              echo \"curl $url\" >> '{ran}'\n\
-             if [ $head = 1 ]; then printf '%s' 'https://github.com/sumdahl/molt/releases/tag/{FAKE_TAG}'; exit 0; fi\n\
+             if [ $head = 1 ]; then printf '%s' 'https://github.com/sumdahl/onyx/releases/tag/{FAKE_TAG}'; exit 0; fi\n\
              cp '{release}'/\"$(basename \"$url\")\" \"$out\"\n",
             ran = root.join("ran").display(),
             release = release.display(),
@@ -2765,13 +2765,13 @@ impl FakeRelease {
     }
 }
 
-/// A copy of molt installed in the temp home's `~/.local/bin`, run with the fake release
+/// A copy of onyx installed in the temp home's `~/.local/bin`, run with the fake release
 /// on `$PATH` and its test key allowed (SE-09).
-fn installed_molt(home: &Home, release: &FakeRelease, args: &[&str]) -> Output {
-    let copy = home.path.join(".local/bin/molt");
+fn installed_onyx(home: &Home, release: &FakeRelease, args: &[&str]) -> Output {
+    let copy = home.path.join(".local/bin/onyx");
     if !copy.exists() {
         fs::create_dir_all(copy.parent().unwrap()).unwrap();
-        fs::copy(env!("CARGO_BIN_EXE_molt"), &copy).unwrap();
+        fs::copy(env!("CARGO_BIN_EXE_onyx"), &copy).unwrap();
     }
     let path = format!("{}:/usr/bin", release.dir.path().join("bin").display());
     let mut command = Command::new(&copy);
@@ -2781,7 +2781,7 @@ fn installed_molt(home: &Home, release: &FakeRelease, args: &[&str]) -> Output {
         .env("HOME", &home.path)
         .env("PATH", path)
         .env(
-            "MOLT_TEST_ALLOWED_SIGNERS",
+            "ONYX_TEST_ALLOWED_SIGNERS",
             release.dir.path().join("signers"),
         )
         .stdout(Stdio::piped())
@@ -2794,16 +2794,16 @@ fn installed_molt(home: &Home, release: &FakeRelease, args: &[&str]) -> Output {
 #[test]
 fn se_01_se_02_se_03_p_05_a_dry_run_checks_everything_and_changes_nothing() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let Some(release) = FakeRelease::good() else {
         return eprintln!("skipped: tar, sha256sum or ssh-keygen isn't installed");
     };
     let home = Home::new();
-    installed_molt(&home, &release, &["--version"]);
+    installed_onyx(&home, &release, &["--version"]);
     let before = snapshot(&home.path);
 
-    let out = installed_molt(&home, &release, &["update", "--dry-run"]);
+    let out = installed_onyx(&home, &release, &["update", "--dry-run"]);
     assert!(out.status.success(), "{}\n{}", stdout(&out), stderr(&out));
     let text = stdout(&out);
     assert!(text.contains("-> 9.9.9"), "{text}");
@@ -2818,38 +2818,38 @@ fn se_01_se_02_se_03_p_05_a_dry_run_checks_everything_and_changes_nothing() {
         release
             .ran()
             .lines()
-            .all(|line| line.starts_with("curl https://github.com/sumdahl/molt/releases/")),
+            .all(|line| line.starts_with("curl https://github.com/sumdahl/onyx/releases/")),
         "{}",
         release.ran()
     );
 }
 
 #[test]
-fn se_05_se_06_yes_swaps_in_the_new_molt_and_trashes_the_old_one() {
+fn se_05_se_06_yes_swaps_in_the_new_onyx_and_trashes_the_old_one() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let Some(release) = FakeRelease::good() else {
         return eprintln!("skipped: tar, sha256sum or ssh-keygen isn't installed");
     };
     let home = Home::new();
-    let out = installed_molt(&home, &release, &["update", "--yes"]);
+    let out = installed_onyx(&home, &release, &["update", "--yes"]);
     assert!(out.status.success(), "{}\n{}", stdout(&out), stderr(&out));
     assert!(
-        stdout(&out).contains("molt is now 9.9.9"),
+        stdout(&out).contains("onyx is now 9.9.9"),
         "{}",
         stdout(&out)
     );
-    let copy = home.path.join(".local/bin/molt");
+    let copy = home.path.join(".local/bin/onyx");
     assert_eq!(
         fs::read_to_string(&copy).unwrap(),
-        "#!/bin/sh\necho 'molt 9.9.9'\n"
+        "#!/bin/sh\necho 'onyx 9.9.9'\n"
     );
     let trashed: Vec<_> = fs::read_dir(home.path.join(".local/share/Trash/files"))
         .unwrap()
         .collect();
-    assert_eq!(trashed.len(), 1, "the old molt");
-    let log = fs::read_to_string(home.path.join(".local/state/molt/operations.log")).unwrap();
+    assert_eq!(trashed.len(), 1, "the old onyx");
+    let log = fs::read_to_string(home.path.join(".local/state/onyx/operations.log")).unwrap();
     assert!(log.contains("\"update\",\"--to\",\"9.9.9\""), "{log}");
     // SE-06: the command and the old binary only; the download folder isn't logged.
     assert_eq!(log.lines().count(), 2, "{log}");
@@ -2859,7 +2859,7 @@ fn se_05_se_06_yes_swaps_in_the_new_molt_and_trashes_the_old_one() {
 #[test]
 fn se_02_a_tampered_release_is_refused_and_nothing_is_replaced() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     type Pack = &'static dyn Fn(&Path);
     type Tamper = &'static dyn Fn(&Path, &str);
@@ -2874,7 +2874,7 @@ fn se_02_a_tampered_release_is_refused_and_nothing_is_replaced() {
         }),
         (
             "version",
-            &|top| fs::write(top.join("molt"), "#!/bin/sh\necho 'molt 1.0.0'\n").unwrap(),
+            &|top| fs::write(top.join("onyx"), "#!/bin/sh\necho 'onyx 1.0.0'\n").unwrap(),
             signed,
         ),
         (
@@ -2884,7 +2884,7 @@ fn se_02_a_tampered_release_is_refused_and_nothing_is_replaced() {
         ),
         (
             "binary is a folder",
-            &|top| fs::create_dir(top.join("molt")).unwrap(),
+            &|top| fs::create_dir(top.join("onyx")).unwrap(),
             signed,
         ),
     ];
@@ -2893,9 +2893,9 @@ fn se_02_a_tampered_release_is_refused_and_nothing_is_replaced() {
             return eprintln!("skipped: tar, sha256sum or ssh-keygen isn't installed");
         };
         let home = Home::new();
-        installed_molt(&home, &release, &["--version"]);
+        installed_onyx(&home, &release, &["--version"]);
         let before = snapshot(&home.path);
-        let out = installed_molt(&home, &release, &["update", "--yes"]);
+        let out = installed_onyx(&home, &release, &["update", "--yes"]);
         assert_eq!(out.status.code(), Some(1), "{what}: {}", stdout(&out));
         assert!(stdout(&out).contains("FAILED"), "{what}: {}", stdout(&out));
         assert_eq!(snapshot(&home.path), before, "{what}");
@@ -2903,13 +2903,13 @@ fn se_02_a_tampered_release_is_refused_and_nothing_is_replaced() {
 }
 
 #[test]
-fn se_04_a_molt_outside_your_home_is_left_to_its_installer() {
+fn se_04_a_onyx_outside_your_home_is_left_to_its_installer() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let home = Home::new();
     let before = snapshot(&home.path);
-    let out = home.molt(&["update", "--yes"], &[]);
+    let out = home.onyx(&["update", "--yes"], &[]);
     assert_eq!(out.status.code(), Some(1), "{}", stdout(&out));
     assert!(
         stderr(&out).contains("isn't a copy you own in your home"),
@@ -2920,23 +2920,23 @@ fn se_04_a_molt_outside_your_home_is_left_to_its_installer() {
 }
 
 #[test]
-fn se_07_se_08_remove_trashes_molt_and_keeps_the_log() {
+fn se_07_se_08_remove_trashes_onyx_and_keeps_the_log() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let Some(release) = FakeRelease::good() else {
         return eprintln!("skipped: tar, sha256sum or ssh-keygen isn't installed");
     };
     let home = Home::new();
     home.config("dry_run = false");
-    home.file(".cache/molt/x", 10);
-    home.file(".local/state/molt/operations.log", 10);
-    home.file(".local/state/molt/other", 10);
-    home.file(".local/share/bash-completion/completions/molt", 10);
-    installed_molt(&home, &release, &["--version"]);
+    home.file(".cache/onyx/x", 10);
+    home.file(".local/state/onyx/operations.log", 10);
+    home.file(".local/state/onyx/other", 10);
+    home.file(".local/share/bash-completion/completions/onyx", 10);
+    installed_onyx(&home, &release, &["--version"]);
     let before = snapshot(&home.path);
 
-    let dry = installed_molt(&home, &release, &["remove", "--dry-run"]);
+    let dry = installed_onyx(&home, &release, &["remove", "--dry-run"]);
     assert!(dry.status.success(), "{}", stderr(&dry));
     assert_eq!(
         stdout(&dry).matches("would trash").count(),
@@ -2951,32 +2951,32 @@ fn se_07_se_08_remove_trashes_molt_and_keeps_the_log() {
     );
     assert_eq!(snapshot(&home.path), before);
 
-    let out = installed_molt(&home, &release, &["remove", "--yes"]);
+    let out = installed_onyx(&home, &release, &["remove", "--yes"]);
     assert!(out.status.success(), "{}\n{}", stdout(&out), stderr(&out));
     for gone in [
-        ".local/bin/molt",
-        ".config/molt",
-        ".cache/molt",
-        ".local/state/molt/other",
-        ".local/share/bash-completion/completions/molt",
+        ".local/bin/onyx",
+        ".config/onyx",
+        ".cache/onyx",
+        ".local/state/onyx/other",
+        ".local/share/bash-completion/completions/onyx",
     ] {
         assert!(!exists(&home.path.join(gone)), "{gone}");
     }
-    assert!(exists(&home.path.join(".local/state/molt/operations.log")));
+    assert!(exists(&home.path.join(".local/state/onyx/operations.log")));
 }
 
 #[test]
 fn se_07_remove_with_log_takes_the_operation_log_too() {
     if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
+        return eprintln!("skipped: onyx refuses root (CL-07)");
     }
     let Some(release) = FakeRelease::good() else {
         return eprintln!("skipped: tar, sha256sum or ssh-keygen isn't installed");
     };
     let home = Home::new();
-    home.file(".local/state/molt/operations.log", 10);
-    let out = installed_molt(&home, &release, &["remove", "--with-log", "--yes"]);
+    home.file(".local/state/onyx/operations.log", 10);
+    let out = installed_onyx(&home, &release, &["remove", "--with-log", "--yes"]);
     assert!(out.status.success(), "{}\n{}", stdout(&out), stderr(&out));
-    assert!(!exists(&home.path.join(".local/state/molt")));
-    assert!(!exists(&home.path.join(".local/bin/molt")));
+    assert!(!exists(&home.path.join(".local/state/onyx")));
+    assert!(!exists(&home.path.join(".local/bin/onyx")));
 }
