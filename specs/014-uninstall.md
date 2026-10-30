@@ -1,6 +1,6 @@
 # 014: `molt uninstall`
 
-Status: Implemented (UN-01 to UN-07); Accepted (UN-08 to UN-15, #46)
+Status: Implemented (UN-01 to UN-15)
 Prefix: UN
 
 ## Goal
@@ -58,8 +58,8 @@ For a name `N`:
 
 ### The package (#46)
 - **UN-08** The package is the one named exactly `N`, or else the one that owns the program `N` found on the absolute `$PATH` entries, as the table's queries say. No package is guessed from a partial name. If no manager owns it, uninstall goes on with the leftovers only (UN-07).
-- **UN-09** Queries and previews run as SY-04 does: without `sudo`, no shell, stdin closed, `$PATH` limited to its absolute entries. A query that fails or can't start means "not owned" by that manager, and molt says so.
-- **UN-10** The preview (P-14) shows the package, its manager, the preview command's output (on stderr), and the exact live command with the absolute `sudo` path in front, above the leftovers. A dry run stops there and never runs `sudo` (SY-05).
+- **UN-09** Queries and previews run as SY-04 does: without `sudo`, no shell, stdin closed, `$PATH` limited to its absolute entries. A query that fails or can't start means "not owned" by that manager.
+- **UN-10** The preview (P-14) shows the package, its manager, everything the preview command printed (for pacman, each package that would go), and the exact live command with the absolute `sudo` path in front, above the leftovers. A dry run stops there and never runs `sudo` (SY-05).
 - **UN-11** One question covers both, default no (UN-06). The live command runs as `sudo -- <tool path> <args>` (SY-07) with stdin from the terminal, and without `--noconfirm` or `-y`, so the package manager shows its own list of what it will remove and asks again. `--yes` skips only molt's question.
 - **UN-12** The package goes first. If its command fails or is declined at the manager's own prompt (non-zero exit), the leftovers are kept and the run exits 3, because the app is still installed.
 - **UN-13** The removal is in the operation log as a command entry (SY-11), and the result shows its exit status (SY-10). `--json` adds a `package` object (manager, name, preview, command) to the preview and a `package` result.

@@ -17,6 +17,7 @@ use molt::safe_delete::{Mode, Permissions};
 use molt::scan::{self, Survey};
 use molt::startup::{self, Startup};
 use molt::system;
+use molt::uninstall::package::{self, PackagePreview};
 use molt::uninstall::{self, AppName};
 
 /// Reclaim disk space on Linux, safely.
@@ -342,23 +343,82 @@ fn run_uninstall(
             return Ok(ExitCode::from(2));
         }
     };
+    let search_path = &startup.env.search_path;
     let (rules, busy) = clean::leave_out_busy(uninstall::rules(&app)?, &processes::running());
+    // UN-14: a running app keeps its package too.
+    let package = busy
+        .is_empty()
+        .then(|| package::find(&app, search_path))
+        .flatten();
+    let sudo = molt::rules::find_tool("sudo", search_path);
+    let package_preview = package
+        .as_ref()
+        .map(|package| package::preview(package, sudo.as_deref(), search_path));
     // UN-05
     let mode = args.permanent.then_some(Mode::Permanent);
     let mut preview = scan::survey(&rules, startup, mode)?;
     preview.report.freed_by = format!("molt uninstall {app}");
-    print_preview(cli, &preview, &busy)?;
-    if !cli.json {
-        if !busy.is_empty() {
-            // UN-04
-            println!("{app} is running: quit {app} first, then run this again.");
-        } else if preview.report.rules.is_empty() {
-            // UN-07
-            println!("Nothing of {app} in your home.");
-        }
-        println!("{app} itself isn't removed: use your package manager for the program.");
+    print_uninstall_preview(cli, &app, &preview, &busy, package_preview.as_ref())?;
+
+    // UN-10: a dry run never reaches sudo.
+    let removable = package.as_ref().zip(sudo.as_deref());
+    if stop_for_dry_run(startup) || (removable.is_none() && preview.report.rules.is_empty()) {
+        return Ok(ExitCode::SUCCESS);
     }
-    ask_and_act(cli, startup, &preview, &rules, false)
+    // UN-11: one question for both.
+    if !go_ahead(cli, "Remove all of the above?")? {
+        return Ok(ExitCode::SUCCESS);
+    }
+    if let Some((package, sudo)) = removable {
+        // SY-11: fail closed before the command.
+        let mut log = molt::safe_delete::CommandLog::open(&startup.env.context(&startup.config))?;
+        let run = package::remove(package, sudo, search_path, &mut log)?;
+        if cli.json {
+            println!("{}", serde_json::json!({ "package": run }));
+        }
+        if run.exit != Some(0) {
+            // UN-12: the app is still installed, so its settings stay.
+            if !cli.json {
+                println!("`{}` failed, so the leftovers were kept.", run.command);
+            }
+            return Ok(ExitCode::from(3));
+        }
+    }
+    if preview.report.rules.is_empty() {
+        return Ok(ExitCode::SUCCESS);
+    }
+    act_on(cli, startup, &preview, &rules, false)
+}
+
+/// UN-04, UN-07, UN-10: the package above the leftovers, all before anything changes.
+fn print_uninstall_preview(
+    cli: &Cli,
+    app: &AppName,
+    preview: &Survey,
+    busy: &[Busy],
+    package: Option<&PackagePreview>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if cli.json {
+        let preview = serde_json::json!({
+            "preview": { "report": preview.report, "busy": busy, "package": package }
+        });
+        println!("{preview}");
+        return Ok(());
+    }
+    println!("Preview. Nothing has changed yet:\n");
+    if let Some(package) = package {
+        print!("{package}");
+    }
+    print!("{}", preview.report);
+    if !busy.is_empty() {
+        println!("{app} is running: quit {app} first, then run this again.");
+    } else if preview.report.rules.is_empty() {
+        println!("Nothing of {app} in your home.");
+    }
+    if package.is_none() {
+        println!("{app} itself isn't removed: no package manager here owns it.");
+    }
+    Ok(())
 }
 
 /// PG-04, PG-05, IN-03: how many items the preview left out, and why. `reasons` pairs a
@@ -393,6 +453,17 @@ fn ask_and_act(
     if !go_ahead(cli, "Clean all of the above?")? {
         return Ok(ExitCode::SUCCESS);
     }
+    act_on(cli, startup, preview, rules, fix_permissions)
+}
+
+/// CN-06 to CN-11: cleans what the preview showed, once the user said yes.
+fn act_on(
+    cli: &Cli,
+    startup: &Startup,
+    preview: &Survey,
+    rules: &[Rule],
+    fix_permissions: bool,
+) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let interactive = !cli.yes;
     // CN-06, LF-05: a separate consent, never implied by --yes.
     let locked: usize = preview

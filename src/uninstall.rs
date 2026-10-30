@@ -5,6 +5,7 @@ use std::fmt;
 
 use crate::rules::{Category, Kind, Pattern, Rule, RuleId};
 
+pub mod package;
 #[cfg(test)]
 mod tests;
 
