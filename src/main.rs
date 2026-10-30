@@ -10,12 +10,13 @@ use molt::analyze;
 use molt::clean::{self, Busy};
 use molt::completions::{self, Shell};
 use molt::config::{Decision, Requested};
+use molt::install;
 use molt::installer;
 use molt::optimize;
 use molt::processes;
 use molt::purge;
 use molt::rules::{Rule, RuleId};
-use molt::safe_delete::{Mode, Permissions};
+use molt::safe_delete::{self, Candidate, Execution, Mode, Permissions, Plan, Privilege};
 use molt::scan::{self, Survey};
 use molt::startup::{self, Startup};
 use molt::system;
@@ -72,6 +73,22 @@ enum Command {
     History(HistoryArgs),
     /// Print a shell completion script: bash, zsh or fish.
     Completions(CompletionsArgs),
+    /// Replace molt with the newest release the maintainer signed: preview first, then
+    /// ask. Only a copy in your home; a package manager updates its own.
+    Update,
+    /// Take molt off this machine (binary, config, cache, state): preview first, then
+    /// ask. The operation log stays unless --with-log.
+    Remove(RemoveArgs),
+}
+
+#[derive(Clone, Args)]
+struct RemoveArgs {
+    /// Remove the operation log too.
+    #[arg(long)]
+    with_log: bool,
+    /// Delete permanently instead of moving to the trash.
+    #[arg(long)]
+    permanent: bool,
 }
 
 #[derive(Clone, Args)]
@@ -289,6 +306,8 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         Some(Command::Optimize(args)) => run_optimize(cli, args, &startup),
         // HI-01: read-only, so a dry run is the same run.
         Some(Command::History(args)) => run_history(cli, args, &startup),
+        Some(Command::Update) => run_update(cli, &startup),
+        Some(Command::Remove(args)) => run_remove(cli, args, &startup),
         // Handled before startup (CO-01).
         Some(Command::Completions(_)) => Ok(ExitCode::SUCCESS),
         // AN-09: read-only, so a dry run is the same run.
@@ -684,6 +703,144 @@ fn run_system(
         print!("{result}");
     }
     Ok(ExitCode::from(result.exit_code()))
+}
+
+/// A plan over `paths` in `mode`, run as `execution`.
+fn self_plan(paths: &[PathBuf], mode: Mode, execution: Execution) -> Plan {
+    Plan {
+        candidates: paths
+            .iter()
+            .filter_map(|path| Candidate::scan(path).ok())
+            .collect(),
+        mode,
+        execution,
+        privilege: Privilege::User,
+        permissions: Permissions::Keep,
+    }
+}
+
+/// SE-06: molt's own download folder, removed whatever happened and never logged.
+fn remove_scratch(folder: &std::path::Path, ctx: &molt::safe_delete::Context) {
+    let mut quiet = ctx.clone();
+    quiet.oplog = None;
+    let plan = self_plan(&[folder.to_path_buf()], Mode::Permanent, Execution::Live);
+    if safe_delete::execute(&plan, &quiet).is_err() {
+        eprintln!("molt: couldn't remove {}", folder.display());
+    }
+}
+
+/// SE-01 to SE-06: the newest signed release, checked, previewed, then swapped in.
+fn run_update(cli: &Cli, startup: &Startup) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let ctx = startup.env.context(&startup.config);
+    let current = env!("CARGO_PKG_VERSION");
+    // SE-04: decided before anything is fetched.
+    let binary = match install::own_binary(&startup.env.dirs.home, ctx.euid) {
+        Ok(binary) => binary,
+        Err(why) => return Err(format!("{why}; nothing changed").into()),
+    };
+    let tools = install::Tools::find(&startup.env.search_path)?;
+    let tag = tools.latest()?;
+    if !install::is_newer(&tag, current) {
+        println!("molt {current} is the newest release. Nothing changed.");
+        return Ok(ExitCode::SUCCESS);
+    }
+    let prepared = install::prepare(&tools, &tag)?;
+    let result = update_from(cli, startup, &ctx, &binary, current, &prepared);
+    remove_scratch(&prepared.folder, &ctx);
+    result
+}
+
+fn update_from(
+    cli: &Cli,
+    startup: &Startup,
+    ctx: &molt::safe_delete::Context,
+    binary: &std::path::Path,
+    current: &str,
+    prepared: &install::Prepared,
+) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    // SE-03
+    println!("Preview. Nothing has changed yet:\n");
+    println!(
+        "  molt {current} -> {}",
+        prepared.tag.trim_start_matches('v')
+    );
+    println!("  from {}", prepared.url);
+    for step in &prepared.steps {
+        let mark = if step.ok { "ok    " } else { "FAILED" };
+        println!("  {mark} {}", step.what);
+    }
+    let Some(new) = &prepared.binary else {
+        return Err("the release didn't pass its checks; nothing changed".into());
+    };
+    println!(
+        "  would replace {} (the old one goes to the trash)\n",
+        binary.display()
+    );
+    if stop_for_dry_run(startup) || !go_ahead(cli, "Replace molt?")? {
+        return Ok(ExitCode::SUCCESS);
+    }
+    // SY-11: fail closed before the swap.
+    let mut log = molt::safe_delete::CommandLog::open(ctx)?;
+    let old = safe_delete::swap_in(binary, new, ctx.euid).map_err(|errno| {
+        format!("couldn't put the new molt in place ({errno}); nothing changed")
+    })?;
+    let version = prepared.tag.trim_start_matches('v');
+    log.record(
+        &[
+            "molt".into(),
+            "update".into(),
+            "--to".into(),
+            version.into(),
+        ],
+        Some(0),
+        0,
+    )?;
+    let report = safe_delete::execute(&self_plan(&[old], Mode::Trash, Execution::Live), ctx)?;
+    for (path, outcome) in &report.results {
+        println!("{}", install::outcome_line(path, outcome));
+    }
+    println!("molt is now {version}.");
+    Ok(ExitCode::from(
+        u8::try_from(report.exit_code()).unwrap_or(3),
+    ))
+}
+
+/// SE-07, SE-08: molt's own files, after the preview and a yes.
+fn run_remove(
+    cli: &Cli,
+    args: &RemoveArgs,
+    startup: &Startup,
+) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let ctx = startup.env.context(&startup.config);
+    let binary = install::own_binary(&startup.env.dirs.home, ctx.euid);
+    let paths = install::leftovers(binary.as_deref().ok(), &startup.env.dirs, args.with_log);
+    let mode = if args.permanent {
+        Mode::Permanent
+    } else {
+        Mode::Trash
+    };
+    let preview = safe_delete::execute(&self_plan(&paths, mode, Execution::DryRun), &ctx)?;
+    println!("Preview. Nothing has changed yet:\n");
+    for (path, outcome) in &preview.results {
+        println!("{}", install::outcome_line(path, outcome));
+    }
+    if let Err(why) = &binary {
+        println!("\nThe binary stays: {why}.");
+    }
+    if !args.with_log {
+        println!("The operation log stays (--with-log removes it).");
+    }
+    if preview.results.is_empty() || stop_for_dry_run(startup) || !go_ahead(cli, "Remove molt?")? {
+        return Ok(ExitCode::SUCCESS);
+    }
+    let report = safe_delete::execute(&self_plan(&paths, mode, Execution::Live), &ctx)?;
+    for (path, outcome) in &report.results {
+        println!("{}", install::outcome_line(path, outcome));
+    }
+    println!("molt is removed.");
+    Ok(ExitCode::from(
+        u8::try_from(report.exit_code()).unwrap_or(3),
+    ))
 }
 
 /// MN-02 to MN-04: the menu, until it's quit. Each pick is parsed and run like a
