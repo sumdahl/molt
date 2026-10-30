@@ -1,6 +1,6 @@
 # 015: `molt optimize`
 
-Status: Implemented (OP-01 to OP-08); Draft (OP-09 to OP-14, #49)
+Status: Implemented (OP-01 to OP-08); Accepted (OP-09 to OP-14, #49)
 Prefix: OP
 
 ## Goal
