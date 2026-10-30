@@ -62,7 +62,12 @@ molt analyze ~ --list --depth 2    # print two levels, 20 largest per level
 molt analyze --all --json          # everything, machine-readable
 ```
 
-`molt status` shows the machine's health in a fifth of a second, read from `/proc` and `/sys` without root: CPUs and how busy they are, load, uptime, memory and swap, each real disk (pointing at `molt analyze` when one is 90% full), processes (naming any zombies), disk and network speeds, temperatures and fans, and the battery. It ends with a health score out of 100 that lists every point it took off and why; the formula is in `specs/013-status.md`. `--json` for scripts.
+`molt status` shows the machine's health in a fifth of a second, read from `/proc` and `/sys` without root: CPUs and how busy they are, load, uptime, memory and swap, each real disk (pointing at `molt analyze` when one is 90% full), processes (naming any zombies), disk and network speeds, temperatures and fans, and the battery. It ends with a health score out of 100 that lists every point it took off and why; the formula is in `specs/013-status.md`. `--json` for scripts. `--watch` shows it full screen and refreshes it every 2 seconds (`--interval` 1 to 60), with rates measured over the whole period; `p` pauses, `r` refreshes now, `q` quits.
+
+```sh
+molt status                        # one snapshot
+molt status --watch --interval 5   # live, every 5 seconds
+```
 
 `molt system` frees space outside your home through each tool's own command, run with `sudo`: the pacman cache (`paccache -rk2` and `-ruk0`), the systemd journal (`journalctl --vacuum-size=500M`) and coredumps past the system's own age limit (`systemd-tmpfiles --clean`). molt itself never runs as root. The preview uses each tool's read-only mode without `sudo`, so `molt system --dry-run` never asks for a password. A task is shown only when its tools are installed.
 
@@ -75,7 +80,6 @@ molt system --only journal         # just one task
 
 | Command | What it does |
 |---|---|
-| `molt status --watch` | The same, refreshed live |
 | `molt uninstall` | Remove an app and its leftovers, across package managers |
 | `molt optimize` | Safe maintenance: orphan packages, TRIM, font cache, failed units |
 | `molt history` | Show what molt has removed |

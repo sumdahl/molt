@@ -1,11 +1,11 @@
 # 013: `molt status`
 
-Status: Implemented (ST-01 to ST-14); Accepted (ST-15 to ST-19, #38)
+Status: Implemented
 Prefix: ST
 
 ## Goal
 
-`molt status` shows the machine's health at a glance: CPU, memory, disks and stuck processes. Everything comes from `/proc` and `/sys`, read without root, and nothing is changed. This spec covers the one-shot snapshot (#36). Hardware readings and a health score (#37) and the live view (#38) add requirements here later.
+`molt status` shows the machine's health at a glance: CPU, memory, disks and stuck processes. Everything comes from `/proc` and `/sys`, read without root, and nothing is changed. It covers the one-shot snapshot (#36), hardware readings and a health score (#37), and the live view (#38).
 
 ## Non-goals
 
