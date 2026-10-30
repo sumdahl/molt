@@ -61,7 +61,13 @@ jobs:
           cp aur/PKGBUILD onyx-bin.PKGBUILD
           cp aur/.SRCINFO onyx-bin.SRCINFO
 
+      # PK-05, PK-06: built from the same binary and installed in Debian first.
+      - name: .deb package
+        run: |
+          packaging/deb/build.sh "${GITHUB_REF_NAME#v}" "onyx-$GITHUB_REF_NAME-$TARGET.tar.gz" deb
+          docker run --rm -v "$PWD/deb:/pkg" -v "$PWD/packaging/deb/check.sh:/check.sh:ro" debian:stable sh /check.sh
+
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --title "onyx $GITHUB_REF_NAME" --notes-file notes.md onyx-*.tar.gz onyx-*.sha256 onyx-bin.PKGBUILD onyx-bin.SRCINFO
+        run: gh release create "$GITHUB_REF_NAME" --title "onyx $GITHUB_REF_NAME" --notes-file notes.md onyx-*.tar.gz onyx-*.sha256 onyx-bin.PKGBUILD onyx-bin.SRCINFO deb/onyx_*.deb deb/onyx_*.deb.sha256
