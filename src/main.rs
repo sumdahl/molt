@@ -1,10 +1,12 @@
 #![forbid(unsafe_code)]
 
 use std::io::{BufRead, IsTerminal, Write};
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::SystemTime;
 
 use clap::{Args, Parser, Subcommand};
+use molt::analyze;
 use molt::clean::{self, Busy};
 use molt::config::{Decision, Requested};
 use molt::installer;
@@ -48,6 +50,8 @@ enum Command {
     /// Move old installers (.deb, .rpm, .AppImage, .iso…) in Downloads and Desktop to the
     /// trash: preview first, then ask.
     Installer(InstallerArgs),
+    /// Show what takes the space in a folder, largest first. Changes nothing.
+    Analyze(AnalyzeArgs),
     /// Free system space (pacman cache, journal, coredumps) through each tool's own
     /// command, run with sudo: preview first, then ask.
     System(SystemArgs),
@@ -77,6 +81,18 @@ struct InstallerArgs {
     /// Delete permanently instead of moving to the trash.
     #[arg(long)]
     permanent: bool,
+}
+
+#[derive(Clone, Args)]
+struct AnalyzeArgs {
+    /// The folder to measure (default: the current directory).
+    path: Option<PathBuf>,
+    /// How many levels to list.
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
+    depth: u32,
+    /// List every entry, not just the 20 largest per level.
+    #[arg(long)]
+    all: bool,
 }
 
 #[derive(Clone, Args)]
@@ -157,6 +173,8 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         Some(Command::Purge(args)) => run_purge(cli, args, &startup),
         Some(Command::Installer(args)) => run_installer(cli, args, &startup),
         Some(Command::System(args)) => run_system(cli, args, &startup),
+        // AN-09: read-only, so a dry run is the same run.
+        Some(Command::Analyze(args)) => run_analyze(cli, args),
     }
 }
 
@@ -323,6 +341,27 @@ fn ask_and_act(
         print!("{result}");
     }
     Ok(ExitCode::from(result.exit_code()))
+}
+
+/// AN-01..AN-09
+fn run_analyze(cli: &Cli, args: &AnalyzeArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let path = match &args.path {
+        Some(path) => path.clone(),
+        None => std::env::current_dir()?,
+    };
+    let depth = usize::try_from(args.depth)?;
+    let tree = analyze::measure(&path, depth)?;
+    if cli.json {
+        println!("{}", serde_json::to_string(&tree)?);
+    } else {
+        print!("{}", analyze::Listing::new(&tree, depth, args.all));
+    }
+    // AN-03, P-13
+    Ok(if tree.partial {
+        ExitCode::from(3)
+    } else {
+        ExitCode::SUCCESS
+    })
 }
 
 /// SY-01..SY-11: previews every task, asks once, then runs each through sudo.

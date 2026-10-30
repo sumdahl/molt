@@ -20,7 +20,7 @@ use rustix::path::Arg;
 
 mod oplog;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 mod trash;
 
 /// What a scan saw at a path, rechecked right before removal (SD-08, SD-10).

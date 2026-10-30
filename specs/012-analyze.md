@@ -1,6 +1,6 @@
 # 012: `molt analyze`
 
-Status: Accepted
+Status: Implemented
 Prefix: AN
 
 ## Goal
@@ -29,7 +29,7 @@ Prefix: AN
 - **AN-05** `PATH` must be a directory. A missing path, a file, or a symlink is an error (exit 1) naming the path.
 
 ### Output
-- **AN-06** The text output lists the folder's children, largest first, then by name: size, the share of the total, and the name, with `/` after folders. `--depth N` (default 1) also lists the children of folders, indented, down to N levels.
+- **AN-06** The text output starts with the folder's total and path, then lists its children, largest first, then by name: size, the share of the total, and the name, with `/` after folders, `@` after symlinks, and `(mount)` after mount points. `--depth N` (default 1) also lists the children of folders, indented, down to N levels.
 - **AN-07** Each level shows its 20 largest entries, then one line for the rest ("… 37 more, 1.2 GiB"). `--all` shows every entry.
 - **AN-08** `--json` prints one object: the path, size, `partial`, and `children` down to `--depth`, each with name, kind (`dir`, `file`, `symlink`, `mount`, `other`), size and `partial`. `--all` doesn't apply; JSON has everything to that depth.
 - **AN-09** `--dry-run` and the config's dry run are accepted and change nothing, as `analyze` changes nothing anyway (P-05). No dry-run notice is printed.

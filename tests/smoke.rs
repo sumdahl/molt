@@ -1226,3 +1226,74 @@ fn in_01_in_04_rules_are_picked_and_permanent_deletes() {
     assert!(!exists(&home.path.join(".local/share/Trash/files/os.iso")));
     assert!(exists(&old[0]), "only the ISO rule ran");
 }
+
+#[test]
+fn an_06_an_09_p_05_analyze_lists_largest_first_and_changes_nothing() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.file("data/big/file", 256 * 1024);
+    home.file("data/small", 4096);
+    let data = home.path.join("data");
+    let before = snapshot(&home.path);
+
+    let out = home.molt(&["analyze", data.to_str().unwrap(), "--depth", "2"], &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let text = stdout(&out);
+    let lines: Vec<&str> = text.lines().collect();
+    assert!(lines[0].ends_with(data.to_str().unwrap()), "{text}");
+    assert!(lines[1].ends_with("  big/"), "{text}");
+    assert!(lines[2].ends_with("    file"), "{text}");
+    assert!(lines[3].ends_with("  small"), "{text}");
+
+    let dry = home.molt(&["analyze", data.to_str().unwrap(), "--dry-run"], &[]);
+    assert!(dry.status.success(), "{}", stderr(&dry));
+    assert!(!stderr(&dry).contains("dry run"), "{}", stderr(&dry));
+    assert_eq!(snapshot(&home.path), before);
+}
+
+#[test]
+fn an_08_analyze_json_has_the_stable_shape() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.file("data/a/b", 4096);
+    let data = home.path.join("data");
+
+    let out = home.molt(&["analyze", data.to_str().unwrap(), "--json"], &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["name"], data.to_str().unwrap());
+    assert_eq!(json["kind"], "dir");
+    assert_eq!(json["partial"], false);
+    assert!(json["bytes"].as_u64().unwrap() >= 4096);
+    let a = &json["children"][0];
+    assert_eq!((&a["name"], &a["kind"]), (&"a".into(), &"dir".into()));
+    assert_eq!(a["children"], serde_json::json!([]));
+}
+
+#[test]
+fn an_03_an_05_partial_exits_3_and_a_bad_path_exits_1() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let file = home.file("data/locked/x", 10);
+    let locked = file.parent().unwrap();
+    fs::set_permissions(locked, fs::Permissions::from_mode(0o000)).unwrap();
+    let data = home.path.join("data");
+
+    let partial = home.molt(&["analyze", data.to_str().unwrap()], &[]);
+    fs::set_permissions(locked, fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(partial.status.code(), Some(3), "{}", stderr(&partial));
+    assert!(stdout(&partial).contains("+"), "{}", stdout(&partial));
+
+    let missing = home.molt(&["analyze", "/nonexistent/molt-test"], &[]);
+    assert_eq!(missing.status.code(), Some(1));
+    assert!(stderr(&missing).contains("/nonexistent/molt-test"));
+    let not_dir = home.molt(&["analyze", file.to_str().unwrap()], &[]);
+    assert_eq!(not_dir.status.code(), Some(1));
+    assert!(stderr(&not_dir).contains("not a directory"));
+}
