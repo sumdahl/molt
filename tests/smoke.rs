@@ -493,11 +493,19 @@ impl Home {
     /// Runs molt in a pseudo-terminal (via `script`), typing `input`. `None` if `script`
     /// isn't installed.
     fn molt_tty(&self, args: &str, input: &str) -> Option<Output> {
+        self.molt_tty_with_path(args, input, "")
+    }
+
+    /// As `molt_tty`, with molt's `$PATH` set to `path`.
+    fn molt_tty_with_path(&self, args: &str, input: &str, path: &str) -> Option<Output> {
         let script = Path::new("/usr/bin/script");
         if !script.exists() {
             return None;
         }
-        let command = format!("{} {args}", env!("CARGO_BIN_EXE_molt"));
+        let command = format!(
+            "/usr/bin/env PATH={path} {} {args}",
+            env!("CARGO_BIN_EXE_molt")
+        );
         let mut child = Command::new(script)
             .args(["-qec", &command, "/dev/null"])
             .env_clear()
@@ -521,6 +529,20 @@ impl Home {
             .unwrap();
         Some(child.wait_with_output().unwrap())
     }
+}
+
+/// Spawns a just-copied binary. Another test thread's fork may briefly hold the copy's
+/// write handle, and exec then fails with "Text file busy", so retry that.
+fn spawn_fresh_copy(command: &mut Command) -> std::process::Child {
+    for _ in 0..100 {
+        match command.stdin(Stdio::piped()).spawn() {
+            Err(e) if e.raw_os_error() == Some(rustix::io::Errno::TXTBSY.raw_os_error()) => {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            spawned => return spawned.unwrap(),
+        }
+    }
+    panic!("the copied binary stayed busy")
 }
 
 fn stdout(out: &Output) -> String {
@@ -591,11 +613,7 @@ fn cn_03_rules_whose_programs_are_running_are_left_out() {
     let busy = home.path.join("molt-busy-test");
     // `sh` blocked on a builtin; a multicall `sleep` would exit under an unknown name.
     fs::copy("/bin/sh", &busy).unwrap();
-    let mut program = Command::new(&busy)
-        .args(["-c", "read line"])
-        .stdin(Stdio::piped())
-        .spawn()
-        .unwrap();
+    let mut program = spawn_fresh_copy(Command::new(&busy).args(["-c", "read line"]));
     // Until it has exec'd, /proc still shows the test binary.
     let comm = format!("/proc/{}/comm", program.id());
     while !fs::read_to_string(&comm).is_ok_and(|c| c.trim_end() == "molt-busy-test") {
@@ -834,4 +852,149 @@ fn cn_12_tool_commands_are_logged() {
     let entry: serde_json::Value = serde_json::from_str(log.lines().next().unwrap()).unwrap();
     assert_eq!(entry["command"], serde_json::json!(["fake-clean", "--all"]));
     assert_eq!(entry["exit"], 0);
+}
+
+/// Fake `sudo`, `paccache`, `journalctl` and `systemd-tmpfiles` in `<home>/bin`. Each
+/// appends its name and arguments to `<home>/ran`; the fake `sudo` then runs the rest, so
+/// no test ever runs the real `sudo` or touches the system.
+fn fake_system_tools(home: &Home, failing: &str) -> PathBuf {
+    let bin = home.path.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let ran = home.path.join("ran");
+    for tool in ["sudo", "paccache", "journalctl", "systemd-tmpfiles"] {
+        let run = if tool == "sudo" {
+            "[ \"$1\" = -- ] || exit 99\nshift\nexec \"$@\""
+        } else if tool == failing {
+            "exit 1"
+        } else {
+            "echo done"
+        };
+        let body = format!(
+            "#!/bin/sh\necho {tool} \"$@\" >> \"{}\"\n{run}\n",
+            ran.display()
+        );
+        fs::write(bin.join(tool), body).unwrap();
+        fs::set_permissions(bin.join(tool), fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    bin
+}
+
+fn ran(home: &Home) -> String {
+    fs::read_to_string(home.path.join("ran")).unwrap_or_default()
+}
+
+#[test]
+fn sy_05_p_05_a_dry_run_runs_previews_only_and_never_sudo() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let bin = fake_system_tools(&home, "");
+    let bin = bin.to_str().unwrap();
+
+    let out = home.molt(&["system", "--dry-run"], &[("PATH", bin)]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let ran = ran(&home);
+    assert!(!ran.contains("sudo"), "{ran}");
+    assert!(ran.contains("paccache -dk2\npaccache -duk0\n"), "{ran}");
+    assert!(!ran.contains("-rk2"), "{ran}");
+    // SY-03: the exact command lines are shown first.
+    assert!(
+        stdout(&out).contains(&format!("would run: {bin}/sudo -- {bin}/paccache -rk2")),
+        "{}",
+        stdout(&out)
+    );
+}
+
+#[test]
+fn sy_06_no_means_nothing_and_no_terminal_needs_yes() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let bin = fake_system_tools(&home, "");
+    let bin = bin.to_str().unwrap();
+
+    let piped = home.molt(&["system"], &[("PATH", bin)]);
+    assert_eq!(piped.status.code(), Some(1));
+    assert!(
+        stdout(&piped).contains("would run"),
+        "the preview is still shown"
+    );
+    assert!(!ran(&home).contains("sudo"), "{}", ran(&home));
+
+    let Some(no) = home.molt_tty_with_path("system", "n\n", bin) else {
+        return eprintln!("skipped the terminal half: script(1) isn't installed");
+    };
+    assert_eq!(no.status.code(), Some(0), "{}", stdout(&no));
+    assert!(stdout(&no).contains("Nothing changed"), "{}", stdout(&no));
+    assert!(!ran(&home).contains("sudo"), "{}", ran(&home));
+}
+
+#[test]
+fn sy_07_sy_08_sy_10_yes_runs_each_command_through_sudo_in_order() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let bin = fake_system_tools(&home, "journalctl");
+    let bin = bin.to_str().unwrap();
+
+    let out = home.molt(&["system", "--yes", "--json"], &[("PATH", bin)]);
+    assert_eq!(out.status.code(), Some(3), "{}", stderr(&out));
+    let ran = ran(&home);
+    let sudo_lines: Vec<&str> = ran
+        .lines()
+        .filter(|line| line.starts_with("sudo"))
+        .collect();
+    assert_eq!(
+        sudo_lines,
+        [
+            format!("sudo -- {bin}/paccache -rk2"),
+            format!("sudo -- {bin}/paccache -ruk0"),
+            format!("sudo -- {bin}/journalctl --vacuum-size=500M"),
+            format!("sudo -- {bin}/systemd-tmpfiles --clean --prefix /var/lib/systemd/coredump"),
+        ],
+        "the failed journal task didn't stop the coredumps task"
+    );
+    let lines: Vec<serde_json::Value> = stdout(&out)
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert!(lines[0]["preview"]["tasks"].is_array(), "{}", stdout(&out));
+    assert_eq!(lines[1]["result"]["tasks"][1]["commands"][0]["exit"], 1);
+    // SY-11
+    let log = fs::read_to_string(home.path.join(".local/state/molt/operations.log")).unwrap();
+    assert_eq!(log.lines().count(), 4, "{log}");
+}
+
+#[test]
+fn sy_01_sy_02_unknown_ids_are_refused_and_relative_path_entries_ignored() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    fake_system_tools(&home, "");
+
+    let typo = home.molt(&["system", "--only", "pacman", "--yes"], &[]);
+    assert_eq!(typo.status.code(), Some(2));
+
+    // `bin` is relative to molt's working directory, which is the temp home.
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_molt"));
+    let out = cmd
+        .args(["system", "--yes", "--json"])
+        .current_dir(&home.path)
+        .env_clear()
+        .env("PATH", "bin")
+        .env("HOME", &home.path)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(ran(&home).is_empty(), "{}", ran(&home));
+    let preview: serde_json::Value =
+        serde_json::from_str(stdout(&out).lines().next().unwrap()).unwrap();
+    assert_eq!(
+        preview["preview"]["inactive"],
+        serde_json::json!(["pacman-cache", "journal", "coredumps"])
+    );
 }

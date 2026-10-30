@@ -55,5 +55,6 @@ What this spec deliberately leaves out.
 | 004 | [CLI skeleton](004-cli.md) | CL | Implemented |
 | 005 | [`molt scan`](005-scan.md) | SC | Implemented |
 | 006 | [`molt clean`](006-clean.md) | CN | Implemented |
+| 007 | [`molt system`](007-system.md) | SY | Implemented |
 | 010 | [Built-in rules](010-built-in-rules.md) | BR | Implemented |
 | 011 | [Locked folders](011-locked-folders.md) | LF | Implemented |
