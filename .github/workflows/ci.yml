@@ -16,4 +16,6 @@ jobs:
       - run: rustup toolchain install stable --profile minimal -c rustfmt,clippy
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
+      # SD-07 tests mount a tmpfs inside an unprivileged user namespace; Ubuntu blocks those by default.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: cargo test

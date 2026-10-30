@@ -256,7 +256,8 @@ fn sd_06_symlinks_inside_a_directory_are_removed_as_links() {
 }
 
 /// Runs `body` in a private user and mount namespace so the test can mount a tmpfs
-/// without root. Skips (with a note) where unprivileged user namespaces are disabled.
+/// without root. Locally it skips (with a note) where unprivileged user namespaces are
+/// disabled; on CI it fails instead.
 fn in_mount_namespace(filter: &str, body: impl FnOnce()) {
     if std::env::var_os("MOLT_TEST_IN_NS").is_some() {
         return body();
@@ -268,6 +269,11 @@ fn in_mount_namespace(filter: &str, body: impl FnOnce()) {
     };
     let available = unshare().arg("true").status().is_ok_and(|s| s.success());
     if !available {
+        // A safety test that silently skips proves nothing, so CI must be able to run it.
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "{filter} needs unprivileged user namespaces on CI"
+        );
         eprintln!("skipped {filter}: unprivileged user namespaces unavailable");
         return;
     }
