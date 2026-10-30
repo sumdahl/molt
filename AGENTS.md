@@ -16,10 +16,18 @@ molt deletes files. A bug here destroys someone's data. When in doubt, refuse, s
 
 ## Safety invariants (from specs/000)
 
-- Delete only through the safe-delete module. Clippy forbids `std::fs::remove_*` and `rename` everywhere else. Never add `#[allow(clippy::disallowed_methods)]` outside that module.
+- Delete only through the safe-delete module. Clippy forbids `std::fs::remove_*`, `std::fs::rename`, `rustix::fs::unlinkat` and `rustix::fs::renameat*` everywhere else. Never add `#[allow(clippy::disallowed_methods)]` outside that module.
 - Never follow symlinks during deletion. Never cross filesystems.
 - Fail closed on unreadable config.
 - Never require root by default.
+
+## Code rules
+
+These are rules, not suggestions. Code that breaks them doesn't merge.
+
+- **Safe Rust only.** `#![forbid(unsafe_code)]` is set at the crate root. Reach the kernel through `rustix`, never through raw `libc` calls.
+- **Idiomatic Rust.** Use the type system to rule out mistakes (enums over flags and strings, newtypes over bare integers). Return errors with `Result` and `?`. Never `unwrap()` or `expect()` outside tests. Implement standard traits (`Debug`, `Display`, `Error`, `From`) instead of inventing your own.
+- **Clean code.** Small functions that do one thing, names that say what a thing is, no dead code, no speculative abstractions. A comment explains *why*, citing the spec ID; the code says *what*.
 
 ## Tests
 

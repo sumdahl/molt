@@ -5,4 +5,7 @@ disallowed-methods = [
     { path = "std::fs::remove_dir", reason = "use the safe-delete module (P-01)" },
     { path = "std::fs::remove_dir_all", reason = "use the safe-delete module (P-01)" },
     { path = "std::fs::rename", reason = "use the safe-delete module (P-01)" },
+    { path = "rustix::fs::unlinkat", reason = "use the safe-delete module (P-01)" },
+    { path = "rustix::fs::renameat", reason = "use the safe-delete module (P-01)" },
+    { path = "rustix::fs::renameat_with", reason = "use the safe-delete module (P-01)" },
 ]
