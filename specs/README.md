@@ -66,4 +66,4 @@ What this spec deliberately leaves out.
 | 015 | [`molt optimize`](015-optimize.md) | OP | Implemented |
 | 016 | [The molt banner](016-banner.md) | BN | Implemented |
 | 017 | [`molt history`](017-history.md) | HI | Implemented |
-| 018 | [Shell completions](018-completions.md) | CO | Draft |
+| 018 | [Shell completions](018-completions.md) | CO | Accepted |

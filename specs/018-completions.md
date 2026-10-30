@@ -1,6 +1,6 @@
 # 018: Shell completions
 
-Status: Draft (#59)
+Status: Accepted (#59)
 Prefix: CO
 
 ## Goal
