@@ -76,7 +76,7 @@ pub struct Rule {
 }
 
 /// The directories anchors resolve to (RE-07). Passed in, never read from the process.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dirs {
     pub home: PathBuf,
     pub config: PathBuf,

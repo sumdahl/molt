@@ -19,7 +19,36 @@ molt finds what is filling your disk (caches, build artifacts, old packages, ins
 | `molt optimize` | Safe maintenance: orphan packages, journal vacuum, TRIM, font cache, failed units |
 | `molt history` | Show what molt has removed |
 
-Every command that changes anything supports `--dry-run` and `--json`.
+## Options and configuration
+
+These work with every command:
+
+| Flag | What it does |
+|---|---|
+| `--dry-run` | Show what would happen without changing anything |
+| `--live` | Act, even when the config or `MOLT_DRY_RUN` asks for a dry run |
+| `--yes` | Don't ask for confirmation |
+| `--json` | Machine-readable output, errors included |
+
+Settings live in `~/.config/molt/config.toml`. Every key is optional:
+
+```toml
+dry_run = true                        # preview only, unless --live
+whitelist = ["~/work/keep-this", "/data/vms"]   # never touched, nor anything inside
+disabled_rules = ["thumbnails"]       # built-in rules to switch off
+purge_paths = ["~/projects"]          # where `molt purge` looks
+```
+
+If the config or a rule file in `~/.config/molt/rules/` can't be read exactly, molt stops without doing anything.
+
+| Variable | Effect |
+|---|---|
+| `MOLT_DRY_RUN=1` | Like `dry_run = true` |
+| `MOLT_NO_OPLOG=1` | Don't write the operation log |
+
+molt refuses to run as root.
+
+Exit codes: `0` success, `1` fatal error with nothing changed, `2` bad usage, `3` partial success.
 
 ## Safety
 

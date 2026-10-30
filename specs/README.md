@@ -52,3 +52,4 @@ What this spec deliberately leaves out.
 | 001 | [Safe delete](001-safe-delete.md) | SD | Implemented |
 | 002 | [Rules engine](002-rules-engine.md) | RE | Implemented |
 | 003 | [Config and whitelist](003-config.md) | CF | Implemented |
+| 004 | [CLI skeleton](004-cli.md) | CL | Implemented |

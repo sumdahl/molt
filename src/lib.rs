@@ -4,3 +4,4 @@
 pub mod config;
 pub mod rules;
 pub mod safe_delete;
+pub mod startup;
