@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 use tempfile::TempDir;
 
@@ -589,8 +589,13 @@ fn cn_03_rules_whose_programs_are_running_are_left_out() {
     );
     let a = home.file("junk/a", 4096);
     let busy = home.path.join("molt-busy-test");
-    fs::copy("/usr/bin/sleep", &busy).unwrap();
-    let mut program = Command::new(&busy).arg("30").spawn().unwrap();
+    // `sh` blocked on a builtin; a multicall `sleep` would exit under an unknown name.
+    fs::copy("/bin/sh", &busy).unwrap();
+    let mut program = Command::new(&busy)
+        .args(["-c", "read line"])
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap();
     // Until it has exec'd, /proc still shows the test binary.
     let comm = format!("/proc/{}/comm", program.id());
     while !fs::read_to_string(&comm).is_ok_and(|c| c.trim_end() == "molt-busy-test") {

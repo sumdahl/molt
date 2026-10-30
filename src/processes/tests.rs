@@ -3,7 +3,7 @@
 use super::*;
 
 use std::os::unix::fs::PermissionsExt;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use tempfile::TempDir;
 
@@ -12,9 +12,15 @@ fn cn_03_running_programs_are_found_by_short_and_long_names() {
     let dir = TempDir::new().unwrap();
     // Longer than the 15 bytes the kernel keeps in `comm`.
     let long = dir.path().join("molt-test-program-with-a-long-name");
-    fs::copy("/usr/bin/sleep", &long).unwrap();
+    // A copy of `sh` blocked on a builtin: a multicall `sleep` would exit at once under
+    // an unknown name, leaving a zombie with an empty cmdline.
+    fs::copy("/bin/sh", &long).unwrap();
     fs::set_permissions(&long, fs::Permissions::from_mode(0o755)).unwrap();
-    let mut child = Command::new(&long).arg("30").spawn().unwrap();
+    let mut child = Command::new(&long)
+        .args(["-c", "read line"])
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap();
     wait_for_exec(child.id(), "molt-test-progr");
 
     let names = running();
