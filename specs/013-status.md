@@ -1,6 +1,6 @@
 # 013: `molt status`
 
-Status: Draft
+Status: Accepted
 Prefix: ST
 
 ## Goal
@@ -31,9 +31,9 @@ Prefix: ST
 - A unit test spawns a child that exits without being waited for and checks it's listed as a zombie, then reaps it.
 - Smoke tests on the real machine, read-only: exit 0, the four sections, the JSON shape, and a snapshot of the temp home unchanged.
 
-## Open questions
+## Decisions
 
-1. **CPU sample.** Wait 200 ms to measure how busy the CPUs are (proposed), or show only the load averages, so `status` returns at once?
-2. **Which disks.** Device-backed and network filesystems, with pseudo filesystems and bind repeats left out (proposed)? Or every mount, as `df -a` does?
-3. **Nearly full.** Mark disks at 90 % or more (proposed)? Another threshold?
-4. **The dead-share timeout.** `statvfs` can block on a dead NFS share. Run each on its own thread and give up after 1 second (proposed)?
+- **A 200 ms CPU sample**, so "how busy" is measured, not guessed from the load.
+- **Device-backed and network filesystems only**, without pseudo filesystems and bind repeats.
+- **Nearly full at 90 %.**
+- **Each disk is measured on its own thread, with a 1 second limit**, so a dead share can't hang `status`.
