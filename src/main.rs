@@ -53,8 +53,8 @@ enum Command {
     /// Show what takes the space in a folder, largest first: a browser on a terminal, a
     /// listing otherwise. Changes nothing.
     Analyze(AnalyzeArgs),
-    /// Show the machine's health: CPU, memory, disks and stuck processes. Changes nothing.
-    Status,
+    /// Show the machine's health: CPU, memory, disks, sensors and a score. Changes nothing.
+    Status(StatusArgs),
     /// Free system space (pacman cache, journal, coredumps) through each tool's own
     /// command, run with sudo: preview first, then ask.
     System(SystemArgs),
@@ -99,6 +99,21 @@ struct AnalyzeArgs {
     /// Print the listing even on a terminal, instead of opening the browser.
     #[arg(long)]
     list: bool,
+}
+
+#[derive(Clone, Args)]
+struct StatusArgs {
+    /// Keep the report on screen, refreshed, until q.
+    #[arg(long)]
+    watch: bool,
+    /// Seconds between refreshes with --watch.
+    #[arg(
+        long,
+        requires = "watch",
+        default_value_t = 2,
+        value_parser = clap::value_parser!(u64).range(1..=60)
+    )]
+    interval: u64,
 }
 
 #[derive(Clone, Args)]
@@ -182,7 +197,8 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         // AN-09: read-only, so a dry run is the same run.
         Some(Command::Analyze(args)) => run_analyze(cli, args, &startup),
         // ST-01, ST-08: read-only, and always 0.
-        Some(Command::Status) => {
+        Some(Command::Status(args)) if args.watch => run_watch(cli, args),
+        Some(Command::Status(_)) => {
             let status = molt::status::status();
             if cli.json {
                 println!("{}", serde_json::to_string(&status)?);
@@ -402,6 +418,22 @@ fn run_analyze(
     } else {
         ExitCode::SUCCESS
     })
+}
+
+/// ST-15 to ST-18: the live view needs a terminal, and isn't for scripts.
+fn run_watch(cli: &Cli, args: &StatusArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let terminal = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    let refused = match (cli.json, terminal) {
+        (true, _) => Some("--watch can't be used with --json; poll `molt status --json` instead"),
+        (_, false) => Some("--watch needs a terminal; use `molt status` or `--json` instead"),
+        _ => None,
+    };
+    if let Some(why) = refused {
+        eprintln!("molt: {why}");
+        return Ok(ExitCode::from(2));
+    }
+    molt::status::watch(std::time::Duration::from_secs(args.interval))?;
+    Ok(ExitCode::SUCCESS)
 }
 
 /// SY-01..SY-11: previews every task, asks once, then runs each through sudo.

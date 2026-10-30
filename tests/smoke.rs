@@ -1298,12 +1298,27 @@ fn an_03_an_05_partial_exits_3_and_a_bad_path_exits_1() {
     assert!(stderr(&not_dir).contains("not a directory"));
 }
 
-/// Runs `molt analyze <dir> <args>` in a pseudo-terminal under a timeout, typing each
-/// chunk of `keys` after a pause, and gives the exit code and all it wrote. `None` where
-/// script(1) or timeout(1) is missing.
+/// Runs `molt analyze <dir> <args>` in a pseudo-terminal; see `molt_pty`.
 fn browse_tty(
     home: &Home,
     dir: &Path,
+    args: &str,
+    keys: &[&str],
+    env: &[(&str, &str)],
+) -> Option<(Option<i32>, String)> {
+    molt_pty(
+        home,
+        &format!("analyze {} {args}", dir.display()),
+        keys,
+        env,
+    )
+}
+
+/// Runs `molt <args>` in a pseudo-terminal under a timeout, typing each chunk of `keys`
+/// after a pause, and gives the exit code and all it wrote. `None` where script(1) or
+/// timeout(1) is missing.
+fn molt_pty(
+    home: &Home,
     args: &str,
     keys: &[&str],
     env: &[(&str, &str)],
@@ -1312,12 +1327,8 @@ fn browse_tty(
     if !script.exists() || !timeout.exists() {
         return None;
     }
-    let command = format!(
-        "{} analyze {} {args}",
-        env!("CARGO_BIN_EXE_molt"),
-        dir.display()
-    );
-    // A stuck browser or script(1) must fail the test, not hang it.
+    let command = format!("{} {args}", env!("CARGO_BIN_EXE_molt"));
+    // A stuck screen or script(1) must fail the test, not hang it.
     let mut child = Command::new(timeout)
         .arg("20")
         .arg(script)
@@ -1509,4 +1520,47 @@ fn st_07_status_json_has_the_stable_shape() {
     // ST-13
     assert!(json["health"]["score"].as_u64().unwrap() <= 100, "{json}");
     assert!(json["health"]["reasons"].is_array(), "{json}");
+}
+
+#[test]
+fn st_15_st_16_st_17_st_19_watch_refreshes_pauses_and_restores_the_terminal() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let before = snapshot(&home.path);
+
+    // Waits past one 1 s refresh, pauses, then quits.
+    let keys = ["", "", "", "p", "q"];
+    let Some((code, screen)) = molt_pty(&home, "status --watch --interval 1", &keys, &[]) else {
+        return eprintln!("skipped: script(1) or timeout(1) isn't installed");
+    };
+    assert_eq!(code, Some(0), "{screen}");
+    assert!(screen.contains("\nMemory"), "{screen}");
+    assert!(screen.contains("every 1s"), "{screen}");
+    assert!(screen.contains("paused"), "{screen}");
+    assert!(restored(&screen), "{screen:?}");
+    assert_eq!(snapshot(&home.path), before);
+}
+
+#[test]
+fn st_18_watch_needs_a_terminal_and_no_json() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    for (args, why) in [
+        (&["status", "--watch"][..], "needs a terminal"),
+        (&["status", "--watch", "--json"][..], "--json"),
+    ] {
+        let out = home.molt(args, &[]);
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        assert!(stderr(&out).contains(why), "{args:?}: {}", stderr(&out));
+    }
+    for args in [
+        &["status", "--interval", "5"][..],
+        &["status", "--watch", "--interval", "0"][..],
+    ] {
+        assert_eq!(home.molt(args, &[]).status.code(), Some(2), "{args:?}");
+    }
 }

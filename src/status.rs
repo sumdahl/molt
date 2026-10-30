@@ -15,6 +15,9 @@ use crate::scan::human_size;
 
 #[cfg(test)]
 mod tests;
+mod watch;
+
+pub use watch::watch;
 
 /// ST-02: how long the CPU sample runs.
 const SAMPLE: Duration = Duration::from_millis(200);
@@ -194,28 +197,34 @@ struct Mount {
 
 /// ST-01: everything, read now. Takes about `SAMPLE`.
 pub fn status() -> Status {
-    let sample = Sample::now();
+    let before = Sample::now();
     // The disks are measured while the sample runs.
     let disks = thread::scope(|scope| {
         let disks = scope.spawn(disks);
         thread::sleep(SAMPLE);
         disks.join().unwrap_or_default()
     });
-    let after = Sample::now();
-    let elapsed = after.at.duration_since(sample.at);
-    let (first, second) = (sample.cpu, after.cpu);
+    report(&before, &Sample::now(), disks)
+}
+
+/// The report with rates between `before` and `after` (ST-02, ST-09, ST-15).
+fn report(before: &Sample, after: &Sample, disks: Vec<Disk>) -> Status {
+    let elapsed = after.at.duration_since(before.at);
     let mut status = Status {
         cpu: Cpu {
             count: thread::available_parallelism().ok().map(usize::from),
             load: read("/proc/loadavg").as_deref().and_then(load),
-            busy: first.zip(second).and_then(|(a, b)| busy_share(a, b)),
+            busy: before
+                .cpu
+                .zip(after.cpu)
+                .and_then(|(a, b)| busy_share(a, b)),
             uptime: read("/proc/uptime").as_deref().and_then(uptime),
         },
         memory: read("/proc/meminfo").as_deref().and_then(memory),
         disks,
         processes: processes(),
-        disk_io: rates(&sample.disks, &after.disks, elapsed),
-        network: rates(&sample.network, &after.network, elapsed),
+        disk_io: rates(&before.disks, &after.disks, elapsed),
+        network: rates(&before.network, &after.network, elapsed),
         sensors: sensors(Path::new("/sys/class/hwmon")),
         batteries: batteries(Path::new("/sys/class/power_supply")),
         health: Health::default(),
