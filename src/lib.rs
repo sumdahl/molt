@@ -13,3 +13,4 @@ pub mod scan;
 pub mod startup;
 pub mod status;
 pub mod system;
+mod terminal;
