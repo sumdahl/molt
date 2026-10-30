@@ -2498,3 +2498,97 @@ fn hi_06_hi_07_json_and_an_empty_history() {
     );
     assert_eq!(snapshot(&empty.path), before, "no state folder is created");
 }
+
+/// Completes `line` (words, the last one being completed) with molt's bash script.
+fn bash_complete(home: &Home, line: &str) -> Vec<String> {
+    let script = home.path.join("molt.bash");
+    fs::write(&script, stdout(&home.molt(&["completions", "bash"], &[]))).unwrap();
+    let program = format!(
+        "source '{}'\nCOMP_WORDS=({line})\nCOMP_CWORD=$((${{#COMP_WORDS[@]}} - 1))\n\
+         [[ '{line}' == *' ' ]] && COMP_CWORD=${{#COMP_WORDS[@]}} && COMP_WORDS+=('')\n\
+         _molt\nprintf '%s\\n' \"${{COMPREPLY[@]}}\"",
+        script.display()
+    );
+    let out = Command::new("/usr/bin/bash")
+        .args(["--noprofile", "--norc", "-c", &program])
+        .env_clear()
+        .env("HOME", &home.path)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", stderr(&out));
+    stdout(&out).lines().map(str::to_owned).collect()
+}
+
+#[test]
+fn co_01_co_02_co_03_bash_completes_commands_flags_and_ids() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    if !Path::new("/usr/bin/bash").exists() {
+        return eprintln!("skipped: bash isn't installed");
+    }
+    let home = Home::new();
+    let out = home.molt(&["completions", "bash"], &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let check = Command::new("/usr/bin/bash")
+        .args(["-n", "-c", &stdout(&out)])
+        .output()
+        .unwrap();
+    assert!(check.status.success(), "bash -n: {}", stderr(&check));
+
+    assert_eq!(bash_complete(&home, "molt cl"), ["clean"]);
+    assert_eq!(
+        bash_complete(&home, "molt system --only "),
+        ["pacman-cache", "journal", "coredumps"]
+    );
+    assert_eq!(bash_complete(&home, "molt purge --skip c"), ["cargo"]);
+    assert!(bash_complete(&home, "molt clean --dr").contains(&"--dry-run".to_owned()));
+    assert_eq!(bash_complete(&home, "molt completions f"), ["fish"]);
+    assert!(bash_complete(&home, "molt optimize --only ").contains(&"dns-cache".to_owned()));
+}
+
+#[test]
+fn co_01_unknown_shells_exit_2_and_a_broken_config_still_completes() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    assert_eq!(
+        home.molt(&["completions", "tcsh"], &[]).status.code(),
+        Some(2)
+    );
+    home.config("this is not toml");
+    let before = snapshot(&home.path);
+    for shell in ["bash", "zsh", "fish"] {
+        let out = home.molt(&["completions", shell], &[]);
+        assert!(out.status.success(), "{shell}: {}", stderr(&out));
+        assert!(stdout(&out).contains("molt"), "{shell}");
+    }
+    assert_eq!(snapshot(&home.path), before);
+}
+
+#[test]
+fn co_04_zsh_and_fish_scripts_parse_where_installed() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    for (shell, check) in [("zsh", &["-n"][..]), ("fish", &["--no-execute"][..])] {
+        let Some(path) = ["/usr/bin", "/bin"]
+            .iter()
+            .map(|dir| Path::new(dir).join(shell))
+            .find(|path| path.exists())
+        else {
+            eprintln!("skipped: {shell} isn't installed");
+            continue;
+        };
+        let script = home.path.join(format!("molt.{shell}"));
+        fs::write(&script, stdout(&home.molt(&["completions", shell], &[]))).unwrap();
+        let out = Command::new(path)
+            .args(check)
+            .arg(&script)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{shell}: {}", stderr(&out));
+    }
+}

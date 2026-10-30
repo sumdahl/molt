@@ -38,7 +38,7 @@ impl ProjectKind {
         Self::Zig,
     ];
 
-    fn id(self) -> &'static str {
+    pub fn id(self) -> &'static str {
         match self {
             Self::Cargo => "cargo",
             Self::Node => "node",

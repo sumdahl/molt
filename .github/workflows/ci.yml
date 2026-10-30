@@ -18,4 +18,6 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       # SD-07 tests mount a tmpfs inside an unprivileged user namespace; Ubuntu blocks those by default.
       - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      # CO-04: the zsh and fish completion scripts are syntax-checked by those shells.
+      - run: sudo apt-get install -y --no-install-recommends zsh fish
       - run: cargo test

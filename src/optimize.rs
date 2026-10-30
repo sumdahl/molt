@@ -143,9 +143,10 @@ impl TaskId {
     }
 }
 
-impl fmt::Display for TaskId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
+impl TaskId {
+    /// The id `--only` and `--skip` take, and completions offer (CO-03).
+    pub fn id(self) -> &'static str {
+        match self {
             Self::PacmanOrphans => "pacman-orphans",
             Self::AptAutoremove => "apt-autoremove",
             Self::DnfAutoremove => "dnf-autoremove",
@@ -155,7 +156,13 @@ impl fmt::Display for TaskId {
             Self::DnsCache => "dns-cache",
             Self::FailedUnits => "failed-units",
             Self::Smart => "smart",
-        })
+        }
+    }
+}
+
+impl fmt::Display for TaskId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.id())
     }
 }
 

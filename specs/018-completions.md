@@ -1,6 +1,6 @@
 # 018: Shell completions
 
-Status: Accepted (#59)
+Status: Implemented
 Prefix: CO
 
 ## Goal
