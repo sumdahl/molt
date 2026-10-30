@@ -15,6 +15,15 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Releases are signed: the tag must carry an SSH signature from a key in
+      # .github/allowed_signers, or nothing is built.
+      - name: Tag must be signed by a maintainer
+        run: |
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          [ "$(git cat-file -t "$GITHUB_REF_NAME")" = tag ] || { echo "$GITHUB_REF_NAME is not an annotated tag"; exit 1; }
+          git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile=.github/allowed_signers \
+            verify-tag "$GITHUB_REF_NAME"
+
       - name: Tag must match Cargo.toml version
         run: |
           want="v$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')"

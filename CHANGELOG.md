@@ -6,6 +6,9 @@ The release workflow publishes the section matching the pushed tag as the GitHub
 
 ## [Unreleased]
 
+### Changed
+- Releases are signed: the release workflow builds only from a tag signed with a maintainer's SSH key, listed in `.github/allowed_signers`. Check a tag with `git -c gpg.ssh.allowedSignersFile=.github/allowed_signers verify-tag vX.Y.Z`.
+
 ## [0.1.0] - 2026-10-30
 
 ### Added
