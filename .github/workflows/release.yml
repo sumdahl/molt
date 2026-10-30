@@ -43,7 +43,7 @@ jobs:
         run: |
           name="molt-$GITHUB_REF_NAME-$TARGET"
           mkdir "$name"
-          cp "target/$TARGET/release/molt" README.md CHANGELOG.md "$name/"
+          cp "target/$TARGET/release/molt" README.md CHANGELOG.md LICENSE "$name/"
           tar czf "$name.tar.gz" "$name"
           sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
 

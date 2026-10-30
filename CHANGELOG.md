@@ -9,3 +9,4 @@ The release workflow publishes the section matching the pushed tag as the GitHub
 ### Added
 - Project foundation: principles spec (`specs/000`), safe-delete spec (`specs/001`), agent guide (`AGENTS.md`).
 - `molt --version` / `molt --help`, smoke tests, CI, and tag-driven release workflow.
+- MIT license.

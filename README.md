@@ -58,3 +58,7 @@ cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 ## Acknowledgements
 
 Inspired by [Mole](https://github.com/tw93/mole) for macOS. molt is an independent implementation, written from scratch in Rust.
+
+## License
+
+[MIT](LICENSE)
