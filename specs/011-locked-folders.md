@@ -34,7 +34,7 @@ A plan carries a **permission choice**: `keep` (the default) or `fix-owned`. Onl
 - **LF-05** `fix-owned` is only ever set from the user's explicit consent. A command that would remove candidates with locked folders first shows the folders, says what it would change (`u+rwx`) and why, and asks. The default answer is no.
   - `--yes` alone doesn't give that consent. A non-interactive run needs `--fix-permissions` as well.
   - In a dry run, `--fix-permissions` changes nothing; the report says the folders would be opened and removed.
-- **LF-06** The dry run and `onyx scan` show each rule's locked folders: how many, that their contents weren't measured, and that `onyx clean` will ask to open them. `--json` lists their paths.
+- **LF-06** The dry run and `onyx scan` show each rule's locked folders: how many, that their contents weren't measured, and that `onyx clean` will ask to open them. `--json` lists their paths. One folder is worded in the singular (#85).
 
 ## Test strategy
 

@@ -66,10 +66,10 @@ Prefix: OP
 - **OP-08** Tasks run in the table's order; one failing doesn't stop the next (SY-08). The result lists each command and its exit status. The exit code is 0 when all succeeded, 3 otherwise (P-13). Every command is in the operation log (SY-11). `--json` prints the preview and the result as `onyx system` does.
 
 ### Maintenance (#49)
-- **OP-09** The maintenance tasks come after the package tasks, in the table's order, with the same `--only`, `--skip`, question, dry run, log, result and exit codes (OP-01, OP-07, OP-08).
+- **OP-09** The maintenance tasks come after the package tasks, in the table's order, with the same `--only`, `--skip`, question, dry run, log, result and exit codes (OP-01, OP-07, OP-08). The question names the tasks that use `sudo` (`Run all of the above? fstrim, dns-cache use sudo.`), since the font cache doesn't (#85).
 - **OP-10** The preview shows each one's name, what it does in one line, its preview's line if it has one, and the exact live command with absolute paths (P-14). A dry run runs only the preview commands.
 - **OP-11** `font-cache` runs as you, never through `sudo`, and is active without `sudo` (P-04).
-- **OP-12** `dns-cache` is active only when `resolvectl statistics` succeeds, as that means systemd-resolved is running; otherwise it's shown as left out with the reason. Its preview line is the "Current Cache Size" line.
+- **OP-12** `dns-cache` is active only when `resolvectl statistics` succeeds, as that means systemd-resolved is running; otherwise it's shown as left out with the reason. Its preview is the "Current Cache Size" line's number, shown as `N answers cached`, since it counts answers, not bytes (#85).
 - **OP-13** No maintenance command gets `--force` or `-f`, and none takes a path from onyx: `fstrim --all` chooses its own filesystems.
 - **OP-14** The live commands run after the package removals; a failing one doesn't stop the rest (OP-08).
 

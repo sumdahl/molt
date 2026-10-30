@@ -100,7 +100,7 @@ fn op_12_the_dns_preview_is_the_cache_size_line_and_a_failure_leaves_it_out() {
     let stats = "Cache\n                         Current Cache Size:  43\n    Cache Hits: 242\n";
     assert_eq!(
         found(TaskId::DnsCache, Some(0), stats),
-        Found::Ready(Some("Current Cache Size: 43".to_owned()))
+        Found::Ready(Some("43 answers cached".to_owned()))
     );
     assert_eq!(found(TaskId::DnsCache, Some(1), ""), Found::Failed(Some(1)));
 }
@@ -160,4 +160,44 @@ fn op_16_failed_units_are_named_with_where_to_look() {
         Some((Some(0), String::new())),
     );
     assert!(broken[0].contains("failed (exit 1)"), "{broken:?}");
+}
+
+#[test]
+fn op_09_the_question_names_the_tasks_that_use_sudo() {
+    let task = |id: TaskId| TaskPreview {
+        id,
+        name: id.name(),
+        query: None,
+        found: Found::Ready(None),
+        would_run: Some(String::new()),
+        live: Some(Invocation {
+            program: "/bin/true".into(),
+            args: Vec::new(),
+        }),
+    };
+    let ask = |ids: &[TaskId]| {
+        Preview {
+            tasks: ids.iter().copied().map(task).collect(),
+            inactive: Vec::new(),
+        }
+        .question()
+    };
+    assert_eq!(ask(&[TaskId::FontCache]), "Run all of the above?");
+    assert_eq!(
+        ask(&[TaskId::Fstrim, TaskId::FontCache]),
+        "Run all of the above? fstrim uses sudo."
+    );
+    assert_eq!(
+        ask(&[TaskId::Fstrim, TaskId::FontCache, TaskId::DnsCache]),
+        "Run all of the above? fstrim, dns-cache use sudo."
+    );
+}
+
+#[test]
+fn op_12_one_dns_answer_is_singular() {
+    assert_eq!(
+        cache_size("  Current Cache Size:  1\n").as_deref(),
+        Some("1 answer cached")
+    );
+    assert_eq!(cache_size("  Current Cache Size: lots\n"), None);
 }

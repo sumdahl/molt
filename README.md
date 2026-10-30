@@ -192,7 +192,7 @@ On Debian or Ubuntu, each release has `onyx_X.Y.Z_amd64.deb`, with a signed `.sh
 sudo apt install ./onyx_0.3.0_amd64.deb
 ```
 
-From crates.io (the crate is `onyx-cli`, because `onyx` was taken; the command is `onyx`), once it's published:
+From crates.io (the crate is `onyx-cli`, because `onyx` was taken; the command is `onyx`):
 
 ```sh
 cargo install onyx-cli
