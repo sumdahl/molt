@@ -2268,3 +2268,69 @@ fn op_02_op_11_op_12_without_sudo_only_font_cache_and_no_resolved_no_dns() {
     assert!(stdout(&out).contains("left out"), "{}", stdout(&out));
     assert!(!tools.ran().contains("flush-caches"), "{}", tools.ran());
 }
+
+const FAKE_SYSTEMCTL: (&str, &str) = (
+    "systemctl",
+    "case \"$*\" in\n\
+     '--failed --plain --no-legend') echo 'bad.service loaded failed failed Bad' ;;\n\
+     '--user --failed --plain --no-legend') echo 'mine.service loaded failed failed Mine' ;;\n\
+     *) exit 1 ;;\n\
+     esac",
+);
+const FAKE_SMARTCTL: (&str, &str) = (
+    "smartctl",
+    "echo 'SMART overall-health self-assessment test result: PASSED'",
+);
+
+#[test]
+fn op_15_op_16_op_17_checks_only_read_and_never_use_sudo() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let tools = FakeTools::new(&[FAKE_SUDO, FAKE_SYSTEMCTL, FAKE_SMARTCTL]);
+    let bin = tools.bin();
+
+    for args in [&["optimize", "--dry-run"][..], &["optimize"][..]] {
+        // No terminal and no --yes: checks alone never ask (OP-15).
+        let out = home.molt(args, &[("PATH", bin)]);
+        assert!(out.status.success(), "{args:?}: {}", stderr(&out));
+        let text = stdout(&out);
+        assert!(text.contains("    bad.service\n"), "{text}");
+        assert!(text.contains("    mine.service (user)\n"), "{text}");
+        assert!(text.contains("systemctl status <unit>"), "{text}");
+    }
+    let ran = tools.ran();
+    assert!(!ran.contains("sudo"), "{ran}");
+    for line in ran.lines().filter(|line| line.starts_with("smartctl")) {
+        let disk = line
+            .strip_prefix("smartctl -H /dev/")
+            .unwrap_or_else(|| panic!("{line}"));
+        assert!(disk.bytes().all(|b| b.is_ascii_alphanumeric()), "{line}");
+    }
+
+    let skipped = home.molt(
+        &["optimize", "--skip", "failed-units", "smart"],
+        &[("PATH", bin)],
+    );
+    assert!(
+        !stdout(&skipped).contains("bad.service"),
+        "{}",
+        stdout(&skipped)
+    );
+}
+
+#[test]
+fn op_20_json_lists_each_checks_lines() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let tools = FakeTools::new(&[FAKE_SYSTEMCTL]);
+    let out = home.molt(&["optimize", "--json"], &[("PATH", tools.bin())]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let task = &json["preview"]["tasks"][0];
+    assert_eq!(task["id"], "failed-units", "{json}");
+    assert_eq!(task["found"]["report"][0], "bad.service", "{json}");
+}
