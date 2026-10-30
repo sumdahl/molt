@@ -1462,3 +1462,48 @@ fn an_20_an_23_protected_items_are_refused_in_the_preview() {
     assert!(exists(&key));
     assert_eq!(snapshot(&home.path), before);
 }
+
+#[test]
+fn st_01_st_06_st_08_status_reports_and_changes_nothing() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let before = snapshot(&home.path);
+
+    for args in [&["status"][..], &["status", "--dry-run"][..]] {
+        let out = home.molt(args, &[]);
+        assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+        let text = stdout(&out);
+        for section in ["CPU", "Memory", "Disks", "Processes"] {
+            assert!(
+                text.lines().any(|line| line == section),
+                "{section}: {text}"
+            );
+        }
+        assert!(text.contains("processes,"), "{text}");
+    }
+    assert_eq!(snapshot(&home.path), before);
+}
+
+#[test]
+fn st_07_status_json_has_the_stable_shape() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let out = Home::new().molt(&["status", "--json"], &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(json["cpu"]["count"].as_u64().unwrap() >= 1, "{json}");
+    assert!(json["memory"]["total"].as_u64().unwrap() > 0, "{json}");
+    let root = json["disks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|disk| disk["point"] == "/")
+        .unwrap_or_else(|| panic!("no / in {json}"));
+    let share = root["used_share"].as_f64().unwrap();
+    assert!((0.0..=100.0).contains(&share), "{root}");
+    assert!(json["processes"]["total"].as_u64().unwrap() > 0, "{json}");
+    assert!(json["processes"]["zombies"].is_array(), "{json}");
+}
