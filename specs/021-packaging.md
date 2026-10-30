@@ -1,6 +1,6 @@
 # 021: Packages: AUR, `.deb` and crates.io
 
-Status: Draft (#62, #63, #64)
+Status: Accepted (#62, #63, #64)
 Prefix: PK
 
 ## Goal
@@ -9,7 +9,7 @@ molt can be installed by the package manager people already use: `molt-bin` from
 
 ## Non-goals
 
-- Publishing. Pushing to the AUR and running `cargo publish` are the maintainer's steps; molt's repository only holds what they publish and the checks that it works.
+- Publishing. Pushing to the AUR and running `cargo publish` are the maintainer's steps; molt's repository only holds what they publish and the checks that it works. The AUR isn't open to new accounts yet, so until then the filled `PKGBUILD` on each release is built by hand (`makepkg -si`).
 - An apt repository, a PPA, a `.rpm`, Flatpak, Snap or Homebrew.
 - A `molt` (built from source) AUR package; `molt-bin` only.
 - aarch64 packages. Only the x86_64 musl build exists (SE-01).
@@ -39,13 +39,11 @@ molt can be installed by the package manager people already use: `molt-bin` from
 - PK-03: `bash -n` and a test that sources the PKGBUILD in bash and checks its fields; `namcap` where installed.
 - PK-07, PK-08: `cargo publish --dry-run --locked` in CI.
 
-## Open questions
-
-1. **Maintainer for the packages.** The AUR and `.deb` need a name and email (`Maintainer:` lines). I'll use `Sumiran Dahal` and the email in your git config unless you say otherwise.
-2. **`$CARGO_HOME/bin` refusal (PK-02).** Recommended: refuse, because cargo tracks what it installed and a swapped binary would leave `cargo install --list` wrong. Otherwise `molt update` would quietly replace cargo's copy.
-
 ## Decisions
 
+- **Maintainer line:** `Sumiran Dahal <50270034+sumdahl@users.noreply.github.com>`, the GitHub address the release commits already use, so no personal email is published.
+- **No AUR account yet** (maintainer, 2026-10-30): the AUR isn't letting new users register. The PKGBUILD and `.SRCINFO` are still built, tested and attached to each release; pushing them to the AUR waits for an account.
+- **A cargo-installed molt is cargo's** (maintainer, 2026-10-30): `molt update` and `molt remove` refuse a binary in `$CARGO_HOME/bin` and name `cargo install molt-cli` / `cargo uninstall molt-cli` (PK-02).
 - **Names checked (2026-10-30):** `molt-cli` is free on crates.io (`molt` is taken), and neither `molt-bin` nor `molt` exists on the AUR.
 - **The PKGBUILD lives in this repo and the workflow fills it.** The release's own sums go in, so the maintainer copies two files to the AUR instead of editing them by hand.
 - **Packages from the signed release binary**, not rebuilt, so every channel ships the exact bytes the maintainer signed.
