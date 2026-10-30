@@ -1,6 +1,6 @@
 # 001: Safe delete
 
-Status: Draft
+Status: Accepted
 Prefix: SD
 
 ## Goal
@@ -27,7 +27,7 @@ A scan produces **candidates**. Each candidate holds the path plus the identity 
 ### Symlinks and mounts
 - **SD-05** Given a candidate that is a symlink, then only the link itself is removed. The link's target is never read, followed, or removed.
 - **SD-06** Given a directory candidate containing symlinks, then the links inside are removed as links, and nothing outside the candidate is touched.
-- **SD-07** Given a directory candidate containing a mount point (a child whose `st_dev` differs from the candidate's), then nothing is deleted under that mount, the mount point directory is kept, and the outcome is `partial`.
+- **SD-07** Given a directory candidate containing a mount point (a child whose `st_dev` differs from the candidate's), then nothing is deleted under that mount, the mount point directory is kept, and the outcome is `partial`. There is no flag to cross mounts.
 
 ### Races (TOCTOU)
 - **SD-08** Given a candidate whose `(st_dev, st_ino, file type)` at execution differs from the scan, then it is skipped with reason `changed-since-scan`.
@@ -57,7 +57,7 @@ A scan produces **candidates**. Each candidate holds the path plus the identity 
 - Race tests (SD-09) use a hook that runs between directory levels and is available only in test builds.
 - Property test: for random trees containing symlinks to outside targets, everything outside the candidate set has the same `(path, inode, size)` before and after.
 
-## Open questions
+## Decisions
 
-- Should SD-07 have a `--cross-mounts` escape hatch, or should mounts never be crossed? (Proposal: never.)
-- Should a busy-file check (an open fd on a file inside the candidate, via `/proc/*/fd`) be part of SD, or stay per-rule as P-08? (Proposal: per-rule; scanning `/proc` per file is too slow.)
+- **Mounts are never crossed.** SD-07 has no `--cross-mounts` escape hatch. A mount inside a cleanable directory is almost always a mistake or a bind mount of real data.
+- **Busy-file checks stay per-rule (P-08).** Safe delete does not scan `/proc/*/fd`. Doing that per file is too slow on trees like `node_modules`; rules that need it check their owning processes once, before planning.
