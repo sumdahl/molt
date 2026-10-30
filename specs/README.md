@@ -62,4 +62,4 @@ What this spec deliberately leaves out.
 | 011 | [Locked folders](011-locked-folders.md) | LF | Implemented |
 | 012 | [`molt analyze`](012-analyze.md) | AN | Implemented |
 | 013 | [`molt status`](013-status.md) | ST | Implemented |
-| 014 | [`molt uninstall`](014-uninstall.md) | UN | Draft |
+| 014 | [`molt uninstall`](014-uninstall.md) | UN | Accepted |
