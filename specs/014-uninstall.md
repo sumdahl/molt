@@ -1,23 +1,36 @@
 # 014: `molt uninstall`
 
-Status: Implemented (UN-01 to UN-07)
+Status: Implemented (UN-01 to UN-15)
 Prefix: UN
 
 ## Goal
 
-`molt uninstall <app>` removes what an app left in your home: its settings, data, state and cache in the XDG folders, its legacy dot-folder, and its menu and autostart entries. You name the app; molt looks only at the exact paths that name gives, shows the full dry run, and moves what you confirm to the trash through safe delete (001). This spec covers the home leftovers (#45). Removing the program itself through the package manager (#46), and flatpak, snap and AppImage (#47), add requirements here later.
+`molt uninstall <app>` removes what an app left in your home: its settings, data, state and cache in the XDG folders, its legacy dot-folder, and its menu and autostart entries. You name the app; molt looks only at the exact paths that name gives, shows the full dry run, and moves what you confirm to the trash through safe delete (001). It covers the home leftovers (#45) and removing the program through the system package manager (#46). Flatpak, snap and AppImage (#47) add requirements here later.
 
 ## Non-goals
 
 - Guessing. No fuzzy or partial matches, no searching the disk, no reading `.desktop` files to discover other names. A name that finds nothing removes nothing.
-- Removing the program. Until #46, molt says the program itself is left for your package manager.
-- Anything outside your home. No root.
+- Removing files outside your home itself. The program goes only through its package manager's own command (P-07), run with `sudo` as `molt system` does (P-04). molt never runs as root.
+- Picking a package by anything but its exact name, or the exact program name on `$PATH`.
+- Package managers' configuration in `/etc` (`apt-get purge`). `remove` is the gentler default.
 
 ## Model
 
 1. Start up (004) and check the name (UN-01, UN-03).
 2. Build in memory one rule per location in UN-02, all for that one name, with the name as the rule's process (P-08). These rules exist only for this run; they are not built-in rules and `scan` and `clean` never see them.
 3. Leave them all out if the app is running (UN-04), then go on exactly as `clean` does: the whitelist (003), measuring with a safe-delete dry run, the preview, one question, safe delete, the report and the operation log (CN-04 to CN-12).
+4. Before the preview, find the package that owns the app (UN-08), and show its removal in the same preview (UN-10). On yes, remove the package first through `sudo`, then the leftovers only if that worked (UN-12).
+
+## Package managers
+
+The first one found on the absolute `$PATH` entries (SC-10) that owns the app is used, in this order. Queries and previews run without `sudo`.
+
+| Manager | Found by | Owns `N` when | Preview (no sudo) | Live command |
+|---|---|---|---|---|
+| pacman (and AUR helpers' packages) | `pacman` | `pacman -Qq N` or `pacman -Qqo <N on $PATH>` names it | `pacman -Rs --print <pkg>` (`-n` and `--print` conflict; `-n` only changes saved config files) | `pacman -Rns <pkg>` |
+| apt | `dpkg-query`, `apt-get` | `dpkg-query -W N` shows it installed, or `dpkg-query -S <N on $PATH>` names it | `apt-get -s remove <pkg>` | `apt-get remove <pkg>` |
+| dnf | `rpm`, `dnf` | `rpm -q N`, or `rpm -qf <N on $PATH>` names it | `rpm -q <pkg>` | `dnf remove <pkg>` |
+| zypper | `rpm`, `zypper` | as dnf | `rpm -q <pkg>` | `zypper remove <pkg>` |
 
 ## Locations
 
@@ -41,7 +54,17 @@ For a name `N`:
 - **UN-04** If a program with the name is running (P-08), everything is left out and molt says to quit it first. Nothing is removed and the exit code is 0, as with a busy rule in `clean`.
 - **UN-05** Settings, data, state, the dot-folder and the entries go to the trash. The cache is deleted, like every regenerable rule. `--permanent` deletes everything instead, after the same preview and question.
 - **UN-06** Everything else is `clean`'s: the full preview first (P-14), one question with no as the default, `--yes` needed without a terminal, `--dry-run` stops after the preview, `--json`, the whitelist, the result and exit codes (CN-11), and the operation log.
-- **UN-07** When nothing is found, molt says so ("Nothing of N in your home") and exits 0. The preview always ends by saying that the program itself isn't removed.
+- **UN-07** When nothing is found, molt says so ("Nothing of N in your home") and exits 0. When no package owns the app (UN-08), the preview ends by saying the program itself isn't removed.
+
+### The package (#46)
+- **UN-08** The package is the one named exactly `N`, or else the one that owns the program `N` found on the absolute `$PATH` entries, as the table's queries say. No package is guessed from a partial name. If no manager owns it, uninstall goes on with the leftovers only (UN-07).
+- **UN-09** Queries and previews run as SY-04 does: without `sudo`, no shell, stdin closed, `$PATH` limited to its absolute entries. A query that fails or can't start means "not owned" by that manager.
+- **UN-10** The preview (P-14) shows the package, its manager, everything the preview command printed (for pacman, each package that would go), and the exact live command with the absolute `sudo` path in front, above the leftovers. A dry run stops there and never runs `sudo` (SY-05).
+- **UN-11** One question covers both, default no (UN-06). The live command runs as `sudo -- <tool path> <args>` (SY-07) with stdin from the terminal, and without `--noconfirm` or `-y`, so the package manager shows its own list of what it will remove and asks again. `--yes` skips only molt's question.
+- **UN-12** The package goes first. If its command fails or is declined at the manager's own prompt (non-zero exit), the leftovers are kept and the run exits 3, because the app is still installed.
+- **UN-13** The removal is in the operation log as a command entry (SY-11), and the result shows its exit status (SY-10). `--json` adds a `package` object (manager, name, preview, command) to the preview and a `package` result.
+- **UN-14** A running app (UN-04) leaves the package out too.
+- **UN-15** molt never runs as root (CL-07). Without `sudo` found on an absolute `$PATH` entry, the package is reported but left out, and the leftovers still go ahead.
 
 ## Test strategy
 
@@ -50,9 +73,12 @@ For a name `N`:
 - UN-04: a copied program named after the app, kept running, leaves everything in place.
 - UN-05: the default run puts settings in the temp home's trash and deletes the cache; `--permanent` puts nothing in the trash.
 - P-05: `--dry-run` and "no" leave the snapshot unchanged.
+- UN-08 to UN-15: fake `pacman`, `dpkg-query`, `apt-get`, `rpm`, `dnf` and `sudo` scripts on a temp `$PATH` that record their arguments and never touch the system, as in 007's tests. A dry run records no `sudo`. The `sudo` arguments start with `--` and an absolute tool path, with no `--noconfirm` or `-y`. A failing fake removal keeps the leftovers and exits 3. A relative `$PATH` entry is ignored.
 
 ## Decisions
 
 - **Exact and case-sensitive.** `code` doesn't match `~/.config/Code`; you type the folder's name. Guessing is how a cleaner deletes the wrong thing.
 - **Rules built in memory**, so uninstall reuses `clean`'s whole path instead of a second one.
 - **No `~/.local/bin/N`.** That's the program, which #46 and #47 handle.
+- **The manager asks again.** Removing a package can take dependencies with it, and only the manager knows its transaction for sure. It asks after molt's preview, so nothing is removed without two yeses.
+- **`pacman -Rns`**: also removes dependencies that nothing else needs, and the package's saved config backups. `apt-get remove` and `dnf remove` already handle dependencies their own way.

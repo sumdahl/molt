@@ -1707,3 +1707,223 @@ fn un_04_a_running_app_is_left_alone() {
         stdout(&out)
     );
 }
+
+/// Fake package tools and `sudo` in a temp dir of their own, so a snapshot of the home
+/// stays exact. Each appends its name and arguments to `<dir>/ran` and then runs its
+/// `body`; the fake `sudo` checks for `--` and runs the rest. No test runs a real one.
+struct FakeTools {
+    dir: TempDir,
+}
+
+impl FakeTools {
+    fn new(tools: &[(&str, &str)]) -> Self {
+        let dir = TempDir::new().unwrap();
+        let ran = dir.path().join("ran");
+        for (tool, body) in tools {
+            let body = format!(
+                "#!/bin/sh\necho {tool} \"$@\" >> \"{}\"\n{body}\n",
+                ran.display()
+            );
+            fs::write(dir.path().join(tool), body).unwrap();
+            fs::set_permissions(dir.path().join(tool), fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        Self { dir }
+    }
+
+    fn bin(&self) -> &str {
+        self.dir.path().to_str().unwrap()
+    }
+
+    fn ran(&self) -> String {
+        fs::read_to_string(self.dir.path().join("ran")).unwrap_or_default()
+    }
+}
+
+const FAKE_SUDO: (&str, &str) = ("sudo", "[ \"$1\" = -- ] || exit 99\nshift\nexec \"$@\"");
+
+/// A pacman that has `foo` installed, owns `<bin>/bar` as `bar-pkg`, and removes with
+/// `removal`'s exit code.
+fn fake_pacman(removal: i32) -> String {
+    format!(
+        "case \"$1\" in\n\
+         -Qq) [ \"$2\" = foo ] && echo foo || exit 1 ;;\n\
+         -Qqo) case \"$2\" in */bar) echo bar-pkg ;; *) exit 1 ;; esac ;;\n\
+         -Rs) echo \"$3-1.0\" ;;\n\
+         -Rns) exit {removal} ;;\n\
+         esac"
+    )
+}
+
+fn package_home() -> (Home, Vec<PathBuf>) {
+    let home = Home::new();
+    let leftovers = vec![
+        home.file(".config/foo/settings.json", 4096),
+        home.file(".cache/foo/blob", 4096),
+    ];
+    (home, leftovers)
+}
+
+#[test]
+fn un_08_un_10_p_05_a_dry_run_previews_the_package_and_never_runs_sudo() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let (home, _) = package_home();
+    let pacman = fake_pacman(0);
+    let tools = FakeTools::new(&[FAKE_SUDO, ("pacman", &pacman)]);
+    let bin = tools.bin();
+    let before = snapshot(&home.path);
+
+    let out = home.molt(&["uninstall", "foo", "--dry-run"], &[("PATH", bin)]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(text.contains("foo (pacman)"), "{text}");
+    assert!(text.contains("    preview:\n      foo-1.0\n"), "{text}");
+    assert!(
+        text.contains(&format!("would run: {bin}/sudo -- {bin}/pacman -Rns foo")),
+        "{text}"
+    );
+    assert!(!text.contains("isn't removed"), "{text}");
+    let ran = tools.ran();
+    assert!(
+        ran.contains("pacman -Qq foo\npacman -Rs --print foo\n"),
+        "{ran}"
+    );
+    assert!(!ran.contains("sudo"), "{ran}");
+    assert_eq!(snapshot(&home.path), before);
+}
+
+#[test]
+fn un_08_the_package_that_owns_the_program_on_path_is_found() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let pacman = fake_pacman(0);
+    let tools = FakeTools::new(&[FAKE_SUDO, ("pacman", &pacman), ("bar", "exit 0")]);
+    let bin = tools.bin();
+
+    let out = home.molt(&["uninstall", "bar", "--dry-run"], &[("PATH", bin)]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(text.contains("bar-pkg (pacman)"), "{text}");
+    assert!(
+        text.contains(&format!("{bin}/pacman -Rns bar-pkg")),
+        "{text}"
+    );
+    assert!(tools.ran().contains(&format!("pacman -Qqo {bin}/bar\n")));
+
+    let none = home.molt(&["uninstall", "nobody", "--dry-run"], &[("PATH", bin)]);
+    assert!(
+        stdout(&none).contains("nobody itself isn't removed"),
+        "{}",
+        stdout(&none)
+    );
+}
+
+#[test]
+fn un_11_un_13_yes_removes_the_package_then_the_leftovers() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let (home, leftovers) = package_home();
+    let pacman = fake_pacman(0);
+    let tools = FakeTools::new(&[FAKE_SUDO, ("pacman", &pacman)]);
+    let bin = tools.bin();
+
+    let out = home.molt(&["uninstall", "foo", "--yes", "--json"], &[("PATH", bin)]);
+    assert!(out.status.success(), "{}\n{}", stdout(&out), stderr(&out));
+    let sudo: Vec<String> = tools
+        .ran()
+        .lines()
+        .filter(|line| line.starts_with("sudo"))
+        .map(str::to_owned)
+        .collect();
+    // UN-11: no --noconfirm, so pacman asks for itself.
+    assert_eq!(sudo, [format!("sudo -- {bin}/pacman -Rns foo")]);
+    for path in &leftovers {
+        assert!(!exists(path), "{}", path.display());
+    }
+    let lines: Vec<serde_json::Value> = stdout(&out)
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(
+        lines[0]["preview"]["package"]["name"],
+        "foo",
+        "{}",
+        stdout(&out)
+    );
+    assert_eq!(lines[0]["preview"]["package"]["manager"], "pacman");
+    assert_eq!(lines[1]["package"]["exit"], 0, "{}", stdout(&out));
+    assert!(lines[2]["result"].is_object(), "{}", stdout(&out));
+}
+
+#[test]
+fn un_12_a_failed_removal_keeps_the_leftovers() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let (home, leftovers) = package_home();
+    let pacman = fake_pacman(1);
+    let tools = FakeTools::new(&[FAKE_SUDO, ("pacman", &pacman)]);
+
+    let out = home.molt(&["uninstall", "foo", "--yes"], &[("PATH", tools.bin())]);
+    assert_eq!(out.status.code(), Some(3), "{}", stderr(&out));
+    for path in &leftovers {
+        assert!(exists(path), "{}", path.display());
+    }
+    assert!(stdout(&out).contains("failed"), "{}", stdout(&out));
+}
+
+#[test]
+fn un_15_without_sudo_only_the_leftovers_go() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let (home, leftovers) = package_home();
+    let pacman = fake_pacman(0);
+    let tools = FakeTools::new(&[("pacman", &pacman)]);
+
+    let out = home.molt(&["uninstall", "foo", "--yes"], &[("PATH", tools.bin())]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(
+        stdout(&out).contains("sudo isn't installed"),
+        "{}",
+        stdout(&out)
+    );
+    assert!(!tools.ran().contains("-Rns"), "{}", tools.ran());
+    for path in &leftovers {
+        assert!(!exists(path), "{}", path.display());
+    }
+}
+
+#[test]
+fn un_08_un_11_apt_and_dnf_use_their_own_commands() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let dpkg = "[ \"$1\" = -W ] && [ \"$3\" = foo ] && printf 'install ok installed' || exit 1";
+    let rpm = "[ \"$1\" = -q ] && [ \"$2\" = foo ] && echo foo-1.0-1.x86_64 || exit 1";
+    for (tools, removal) in [
+        (
+            vec![FAKE_SUDO, ("dpkg-query", dpkg), ("apt-get", "exit 0")],
+            "apt-get remove foo",
+        ),
+        (
+            vec![FAKE_SUDO, ("rpm", rpm), ("dnf", "exit 0")],
+            "dnf remove foo",
+        ),
+    ] {
+        let (home, _) = package_home();
+        let tools = FakeTools::new(&tools);
+        let bin = tools.bin();
+        let out = home.molt(&["uninstall", "foo", "--yes"], &[("PATH", bin)]);
+        assert!(out.status.success(), "{}", stderr(&out));
+        assert!(
+            tools.ran().contains(&format!("sudo -- {bin}/{removal}\n")),
+            "{}",
+            tools.ran()
+        );
+    }
+}

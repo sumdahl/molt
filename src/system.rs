@@ -102,7 +102,7 @@ impl Invocation {
     }
 
     /// SY-07: `sudo -- <absolute tool path> <args>`, so sudo runs what the preview showed.
-    fn under(&self, sudo: &Path) -> Self {
+    pub(crate) fn under(&self, sudo: &Path) -> Self {
         let mut args = vec!["--".to_owned(), self.program.to_string_lossy().into_owned()];
         args.extend(self.args.iter().cloned());
         Self {
@@ -111,13 +111,13 @@ impl Invocation {
         }
     }
 
-    fn words(&self) -> Vec<String> {
+    pub(crate) fn words(&self) -> Vec<String> {
         std::iter::once(self.program.to_string_lossy().into_owned())
             .chain(self.args.iter().cloned())
             .collect()
     }
 
-    fn command(&self, search_path: &[PathBuf]) -> Command {
+    pub(crate) fn command(&self, search_path: &[PathBuf]) -> Command {
         let mut command = Command::new(&self.program);
         command.args(&self.args).env(
             "PATH",
@@ -316,13 +316,7 @@ pub fn act(
         let mut commands = Vec::new();
         for run in &task.commands {
             let run = run.under(sudo);
-            // stdin stays the terminal, for sudo's password prompt.
-            let exit = run
-                .command(search_path)
-                .stdout(Stdio::from(std::io::stderr()))
-                .status()
-                .ok()
-                .and_then(|status| status.code());
+            let exit = run_live(&run, search_path);
             commands.push((run, exit));
             if exit != Some(0) {
                 break;
@@ -350,6 +344,16 @@ pub fn act(
         freed: results.iter().map(|task| task.freed).sum(),
         tasks: results,
     })
+}
+
+/// SY-07: runs `run` with stdin still the terminal, for sudo's password prompt, and its
+/// output on stderr. `None` when it couldn't start or was killed by a signal.
+pub(crate) fn run_live(run: &Invocation, search_path: &[PathBuf]) -> Option<i32> {
+    run.command(search_path)
+        .stdout(Stdio::from(std::io::stderr()))
+        .status()
+        .ok()
+        .and_then(|status| status.code())
 }
 
 /// SY-09: the on-disk size of the task's folders under `root` (P-12).
