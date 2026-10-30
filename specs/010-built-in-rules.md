@@ -1,6 +1,6 @@
 # 010: Built-in rules
 
-Status: Draft
+Status: Accepted
 Prefix: BR
 
 ## Goal
@@ -77,8 +77,8 @@ Only the cache folders, never the profile: bookmarks, passwords and sessions liv
 - One table-driven test (BR-01) that, for each rule, lays out matching and non-matching paths in a fake home and asserts the matches.
 - A test that every rule with `clean_with` also has `requires` naming its first word (BR-04).
 
-## Open questions
+## Decisions
 
-- **The trash.** Add a rule that empties `$D/Trash`? It frees real space, but it permanently deletes files the user only meant to put aside. (Proposal: not as a normal rule. Leave it out for now, and add a separate, explicit `molt clean --empty-trash` later.)
-- **`java` as the process for Gradle, Maven and JetBrains.** It's broad: any running Java program blocks those rules. (Proposal: keep it. Skipping too often is safe; deleting under a running build or IDE is not.)
-- **Maven.** `~/.m2/repository` can take a long time to re-download. Include it? (Proposal: yes. `clean` lets the user untick it, and the whitelist can protect it.)
+- **No trash rule.** Emptying the trash deletes what the user only set aside; it will be a separate, explicit action later.
+- **`java` blocks Gradle, Maven and JetBrains.** Skipping too often is safe; deleting under a running build or IDE is not.
+- **Maven is included.** `clean` lets the user untick it, and the whitelist can protect it.
