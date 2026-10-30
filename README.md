@@ -193,6 +193,14 @@ On Debian or Ubuntu, each release from v0.3.0 on has `onyx_X.Y.Z_amd64.deb`, wit
 sudo apt install ./onyx_0.3.0_amd64.deb
 ```
 
+From crates.io (the crate is `onyx-cli`, because `onyx` was taken; the command is `onyx`), once it's published:
+
+```sh
+cargo install onyx-cli
+```
+
+cargo then owns that copy: update it with `cargo install onyx-cli` and remove it with `cargo uninstall onyx-cli`. Add the completions yourself (see Shell completions).
+
 From source:
 
 ```sh

@@ -41,6 +41,7 @@ jobs:
       # SD-07 tests mount a tmpfs inside an unprivileged user namespace; Ubuntu blocks those by default.
       - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: cargo test
+      - run: cargo publish --dry-run --locked
       - run: cargo build --release --locked --target "$TARGET"
 
       - name: Smoke test release binary

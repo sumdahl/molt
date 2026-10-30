@@ -1,6 +1,6 @@
 # 021: Packages: AUR, `.deb` and crates.io
 
-Status: Accepted (#62, #63, #64)
+Status: Implemented (#62, #63, #64)
 Prefix: PK
 
 ## Goal
@@ -29,7 +29,7 @@ onyx can be installed by the package manager people already use: `onyx-bin` from
 - **PK-06** The workflow installs the `.deb` with `apt-get install ./onyx_….deb` in a `debian:stable` container, checks `onyx --version` and the completion files, removes it with `apt-get remove`, and checks `/usr/bin/onyx` is gone. It attaches the `.deb` and its `.sha256` to the release. The maintainer signs that `.sha256` too, with the same command as the tarball's (AGENTS.md step 7).
 
 ### crates.io: `onyx-cli` (#64)
-- **PK-07** `Cargo.toml` names the package `onyx-cli`, with `[lib] name = "onyx"` and `[[bin]] name = "onyx"`, so the command and `use onyx::…` stay as they are. It has `description`, `license`, `repository`, `readme`, `keywords` and `categories`, `publish = true`, and an `include` list of exactly what the build needs: `src/`, `Cargo.toml`, `Cargo.lock`, `README.md`, `LICENSE`, `CHANGELOG.md` and `.github/allowed_signers` (built into onyx, SE-09's built-in signers).
+- **PK-07** `Cargo.toml` names the package `onyx-cli`, with `[lib] name = "onyx"` and `[[bin]] name = "onyx"`, so the command and `use onyx::…` stay as they are. It has `description`, `license`, `repository`, `readme`, `keywords` and `categories`, `publish = true`, and an `include` list of exactly what the build needs: `src/`, `rules/builtin.toml` (the built-in rules), `Cargo.toml`, `Cargo.lock`, `README.md`, `LICENSE`, `CHANGELOG.md` and `.github/allowed_signers` (SE-09's built-in signers); the rules and signers are embedded in the binary.
 - **PK-08** CI runs `cargo publish --dry-run --locked`, which builds the packaged crate on its own, so a file missing from `include` fails the build. The release workflow runs it too; the maintainer runs the real `cargo publish` after the release.
 
 ## Test strategy

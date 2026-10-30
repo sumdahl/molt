@@ -8,6 +8,7 @@ The release workflow publishes the section matching the pushed tag as the GitHub
 
 ### Added
 - A `PKGBUILD` for `onyx-bin` on each release, which packages the release binary with its licence, README and shell completions. The release workflow builds and installs it in Arch before publishing. Spec: `specs/021-packaging.md`.
+- The crate is `onyx-cli`, ready for crates.io (`cargo install onyx-cli`); the command and library are still `onyx`. CI checks it with `cargo publish --dry-run`.
 - `onyx_X.Y.Z_amd64.deb` and its `.sha256` on each release: the same binary, licence, README and completions, installed and removed in Debian by the release workflow first.
 
 ### Changed
