@@ -849,7 +849,8 @@ fn cn_12_tool_commands_are_logged() {
     );
 
     let log = fs::read_to_string(home.path.join(".local/state/onyx/operations.log")).unwrap();
-    let entry: serde_json::Value = serde_json::from_str(log.lines().next().unwrap()).unwrap();
+    // FP-06: the confirmation comes first.
+    let entry: serde_json::Value = serde_json::from_str(log.lines().nth(1).unwrap()).unwrap();
     assert_eq!(entry["command"], serde_json::json!(["fake-clean", "--all"]));
     assert_eq!(entry["exit"], 0);
 }
@@ -963,9 +964,9 @@ fn sy_07_sy_08_sy_10_yes_runs_each_command_through_sudo_in_order() {
         .collect();
     assert!(lines[0]["preview"]["tasks"].is_array(), "{}", stdout(&out));
     assert_eq!(lines[1]["result"]["tasks"][1]["commands"][0]["exit"], 1);
-    // SY-11
+    // SY-11, and FP-06's confirmation.
     let log = fs::read_to_string(home.path.join(".local/state/onyx/operations.log")).unwrap();
-    assert_eq!(log.lines().count(), 4, "{log}");
+    assert_eq!(log.lines().count(), 5, "{log}");
 }
 
 #[test]
@@ -2851,8 +2852,9 @@ fn se_05_se_06_yes_swaps_in_the_new_onyx_and_trashes_the_old_one() {
     assert_eq!(trashed.len(), 1, "the old onyx");
     let log = fs::read_to_string(home.path.join(".local/state/onyx/operations.log")).unwrap();
     assert!(log.contains("\"update\",\"--to\",\"9.9.9\""), "{log}");
-    // SE-06: the command and the old binary only; the download folder isn't logged.
-    assert_eq!(log.lines().count(), 2, "{log}");
+    // SE-06: the confirmation (FP-06), the command and the old binary; the download
+    // folder isn't logged.
+    assert_eq!(log.lines().count(), 3, "{log}");
     assert!(log.contains("\"outcome\":\"trashed\""), "{log}");
 }
 
@@ -3010,4 +3012,122 @@ fn pk_02_a_cargo_installed_onyx_is_left_to_cargo() {
         );
         assert_eq!(snapshot(&home.path), before, "{args:?}");
     }
+}
+
+/// A fake `fprintd-verify` that records its call and exits `code`.
+fn fake_fprintd(code: i32) -> FakeTools {
+    FakeTools::new(&[("fprintd-verify", &format!("exit {code}"))])
+}
+
+fn confirmations(home: &Home) -> Vec<String> {
+    fs::read_to_string(home.path.join(".local/state/onyx/operations.log"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter_map(|entry| entry["confirmed"].as_str().map(str::to_owned))
+        .collect()
+}
+
+#[test]
+fn fp_03_fp_06_a_matched_fingerprint_goes_ahead_without_typing() {
+    if is_root() {
+        return eprintln!("skipped: onyx refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.config("confirm = \"fingerprint\"");
+    home.file(".cache/thumbnails/t.png", 4096);
+    let tools = fake_fprintd(0);
+    // No `y` typed: only the fingerprint can say yes.
+    let Some(out) = home.onyx_tty_with_path("clean", "", tools.bin()) else {
+        return eprintln!("skipped: script(1) isn't installed");
+    };
+    let text = stdout(&out);
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(text.contains("Touch the fingerprint sensor"), "{text}");
+    assert!(!exists(&home.path.join(".cache/thumbnails")), "{text}");
+    assert_eq!(tools.ran().lines().count(), 1, "{}", tools.ran());
+    assert_eq!(confirmations(&home), ["fingerprint"]);
+}
+
+#[test]
+fn fp_04_an_unconfirmed_or_missing_fingerprint_falls_back_to_typing() {
+    if is_root() {
+        return eprintln!("skipped: onyx refuses root (CL-07)");
+    }
+    let no_match = fake_fprintd(1);
+    let missing = TempDir::new().unwrap();
+    for (bin, said) in [
+        (no_match.bin(), "wasn't confirmed"),
+        (missing.path().to_str().unwrap(), "isn't installed"),
+    ] {
+        let home = Home::new();
+        home.config("confirm = \"fingerprint\"");
+        home.file(".cache/thumbnails/t.png", 4096);
+        let before = snapshot(&home.path);
+        let Some(no) = home.onyx_tty_with_path("clean", "\n", bin) else {
+            return eprintln!("skipped: script(1) isn't installed");
+        };
+        let text = stdout(&no);
+        assert!(text.contains(said) && text.contains("[y/N]"), "{text}");
+        assert!(text.contains("Nothing changed"), "{text}");
+        assert_eq!(snapshot(&home.path), before, "{said}");
+
+        let yes = home.onyx_tty_with_path("clean", "y\n", bin).unwrap();
+        assert_eq!(yes.status.code(), Some(0), "{}", stdout(&yes));
+        assert!(!exists(&home.path.join(".cache/thumbnails")));
+        assert_eq!(confirmations(&home), ["typed"], "{said}");
+    }
+}
+
+#[test]
+fn fp_02_yes_dry_runs_and_pipes_never_touch_the_sensor() {
+    if is_root() {
+        return eprintln!("skipped: onyx refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.config("confirm = \"fingerprint\"");
+    home.file(".cache/thumbnails/t.png", 4096);
+    let tools = fake_fprintd(0);
+    let path = ("PATH", tools.bin());
+    assert_eq!(home.onyx(&["clean"], &[path]).status.code(), Some(1));
+    assert!(home.onyx(&["clean", "--dry-run"], &[path]).status.success());
+    if let Some(dry) = home.onyx_tty_with_path("clean --dry-run", "", tools.bin()) {
+        assert!(dry.status.success(), "{}", stdout(&dry));
+    }
+    assert!(home.onyx(&["clean", "--yes"], &[path]).status.success());
+    assert_eq!(tools.ran(), "", "fprintd-verify never ran");
+    assert_eq!(confirmations(&home), ["yes-flag"]);
+}
+
+#[test]
+fn fp_01_a_bad_confirm_value_stops_onyx() {
+    let home = Home::new();
+    home.config("confirm = \"face\"");
+    home.file(".cache/thumbnails/t.png", 4096);
+    let before = snapshot(&home.path);
+    let out = home.onyx(&["clean", "--yes"], &[]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert_eq!(snapshot(&home.path), before);
+}
+
+#[test]
+fn fp_05_ctrl_c_while_waiting_for_the_finger_changes_nothing() {
+    if is_root() {
+        return eprintln!("skipped: onyx refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.config("confirm = \"fingerprint\"");
+    home.file(".cache/thumbnails/t.png", 4096);
+    let before = snapshot(&home.path);
+    // It would say yes after 3 s; Ctrl-C comes first.
+    let tools = FakeTools::new(&[("fprintd-verify", "sleep 3\nexit 0")]);
+    let path = format!("{}:/usr/bin", tools.bin());
+    let Some((code, screen)) = onyx_pty(&home, "clean", &["\x03"], &[("PATH", &path)]) else {
+        return eprintln!("skipped: script(1) or timeout isn't installed");
+    };
+    std::thread::sleep(std::time::Duration::from_secs(4));
+    assert_ne!(code, Some(0), "{screen}");
+    assert!(screen.contains("Touch the fingerprint sensor"), "{screen}");
+    assert_eq!(snapshot(&home.path), before, "{screen}");
+    assert!(confirmations(&home).is_empty());
 }

@@ -70,3 +70,4 @@ What this spec deliberately leaves out.
 | 019 | [The `onyx` menu](019-menu.md) | MN | Implemented |
 | 020 | [`onyx update` and `onyx remove`](020-self.md) | SE | Implemented |
 | 021 | [Packages: AUR, `.deb` and crates.io](021-packaging.md) | PK | Implemented |
+| 022 | [Fingerprint confirmation](022-fingerprint.md) | FP | Implemented |

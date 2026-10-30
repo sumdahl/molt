@@ -11,6 +11,9 @@ The release workflow publishes the section matching the pushed tag as the GitHub
 - The crate is `onyx-cli`, ready for crates.io (`cargo install onyx-cli`); the command and library are still `onyx`. CI checks it with `cargo publish --dry-run`.
 - `onyx_X.Y.Z_amd64.deb` and its `.sha256` on each release: the same binary, licence, README and completions, installed and removed in Debian by the release workflow first.
 
+- `confirm = "fingerprint"` in the config: answer a live run's question by touching the fingerprint sensor (`fprintd-verify`) instead of typing `y`, after the same full preview. A missing reader, finger or match falls back to the typed question; Ctrl-C stops with nothing changed. Off by default. Spec: `specs/022-fingerprint.md`.
+- The operation log records each confirmation before anything changes: typed, fingerprint, or `--yes`. `onyx history` skips these entries.
+
 ### Changed
 - `onyx update` and `onyx remove` leave an onyx installed by a package manager or by `cargo install` alone, and name the package and the tool to use.
 

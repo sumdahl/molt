@@ -6,6 +6,7 @@ pub mod banner;
 pub mod clean;
 pub mod completions;
 pub mod config;
+pub mod fingerprint;
 pub mod history;
 pub mod install;
 pub mod installer;

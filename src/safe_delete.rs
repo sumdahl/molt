@@ -19,6 +19,7 @@ pub use rustix::io::Errno;
 use rustix::path::Arg;
 
 mod oplog;
+pub use oplog::Confirmed;
 mod swap;
 #[cfg(test)]
 pub(crate) mod tests;
@@ -243,6 +244,14 @@ impl CommandLog {
     ) -> std::io::Result<()> {
         match &mut self.0 {
             Some(log) => log.record_command(command, exit, bytes),
+            None => Ok(()),
+        }
+    }
+
+    /// FP-06
+    pub fn confirmed(&mut self, how: Confirmed, question: &str) -> std::io::Result<()> {
+        match &mut self.0 {
+            Some(log) => log.record_confirmation(how, question),
             None => Ok(()),
         }
     }

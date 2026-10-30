@@ -29,6 +29,16 @@ pub struct Config {
     pub whitelist: Vec<ConfigPath>,
     pub disabled_rules: Vec<RuleId>,
     pub purge_paths: Vec<ConfigPath>,
+    pub confirm: Confirm,
+}
+
+/// FP-01: how a live run's question is answered.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Confirm {
+    #[default]
+    Type,
+    Fingerprint,
 }
 
 #[derive(Debug)]
