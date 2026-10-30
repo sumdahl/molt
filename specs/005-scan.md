@@ -23,7 +23,7 @@ Prefix: SC
 ## Requirements
 
 - **SC-01** `scan` changes nothing. It never runs a live plan, writes no operation-log entry, creates no trash directory, and runs no external command. `--live` has no effect on it.
-- **SC-02** Each rule's size is the sum of its candidates' `would-remove` / `would-trash` bytes from the safe-delete dry run. Candidates that safe delete would skip (protected, whitelisted, mount point…) are not counted. They are listed with their reason.
+- **SC-02** Each rule's size is the sum of its candidates' `would-remove` / `would-trash` bytes from the safe-delete dry run. Candidates that safe delete would skip (protected, whitelisted, mount point…) or couldn't measure (`failed`, e.g. a folder inside that can't be listed) are not counted. They are listed with their reason, and the human report shows how many were skipped and how many failed on the rule's line. A failed candidate makes the scan partial (SC-07).
 - **SC-03** The report groups rules by category. Categories, and rules within a category, are sorted by size, largest first. Rules with no matches are left out. Inactive rules (RE-08) are counted in one summary line.
 - **SC-04** Sizes are shown with binary units, the way `du -h` and `df -h` show them (`512 B`, `1.5 KiB`, `23.4 GiB`), with one decimal from KiB up.
 - **SC-05** The report ends with a total and says which command would free the space (`molt clean`). A rule with `clean_with` (P-07) shows that command next to its size, since `clean` will run it instead of deleting files.

@@ -155,10 +155,10 @@ impl RuleReport {
         self.items.push(item);
     }
 
-    fn skipped(&self) -> usize {
+    fn count(&self, outcome: &str) -> usize {
         self.items
             .iter()
-            .filter(|item| item.outcome == "skipped")
+            .filter(|item| item.outcome == outcome)
             .count()
     }
 }
@@ -231,9 +231,12 @@ impl fmt::Display for ScanReport {
                 if !rule.clean_with.is_empty() {
                     write!(f, "  via `{}`", rule.clean_with.join(" "))?;
                 }
-                match rule.skipped() {
-                    0 => {}
-                    n => write!(f, "  ({n} skipped)")?,
+                // SC-02
+                for outcome in ["skipped", "failed"] {
+                    match rule.count(outcome) {
+                        0 => {}
+                        n => write!(f, "  ({n} {outcome})")?,
+                    }
                 }
                 writeln!(f)?;
             }
@@ -249,7 +252,7 @@ impl fmt::Display for ScanReport {
         if self.partial {
             writeln!(
                 f,
-                "Partial scan: some folders couldn't be read, so sizes may be higher. See --json."
+                "Partial scan: some folders couldn't be read or measured, so sizes may be higher. See --json."
             )?;
         }
         writeln!(

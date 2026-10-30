@@ -385,6 +385,37 @@ fn sc_07_symlinks_are_reported_and_unreadable_dirs_make_it_partial() {
 }
 
 #[test]
+fn sc_02_sc_07_an_unmeasurable_item_is_shown_as_failed() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.rules(JUNK_RULE);
+    home.file("junk/a", 4096);
+    // What makepkg leaves behind: a folder its owner can enter but not list.
+    let pkg = home.path.join("junk/build/pkg");
+    home.file("junk/build/pkg/x", 4096);
+    fs::set_permissions(&pkg, fs::Permissions::from_mode(0o111)).unwrap();
+
+    let (code, report) = home.scan_json();
+    let human = home.molt(&["scan"], &[]);
+    fs::set_permissions(&pkg, fs::Permissions::from_mode(0o755)).unwrap();
+
+    assert_eq!(code, Some(3));
+    let build = rule(&report, "junk")["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["path"].as_str().unwrap().ends_with("junk/build"))
+        .unwrap()
+        .clone();
+    assert_eq!(build["outcome"], "failed");
+    let text = String::from_utf8_lossy(&human.stdout);
+    assert!(text.contains("(1 failed)"), "{text}");
+    assert!(text.contains("Partial"), "{text}");
+}
+
+#[test]
 fn sc_08_cl_01_global_flags_work_after_the_command_name() {
     if is_root() {
         return eprintln!("skipped: molt refuses root (CL-07)");
