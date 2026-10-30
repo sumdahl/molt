@@ -1,15 +1,15 @@
-# 007: `molt system`
+# 007: `onyx system`
 
 Status: Implemented
 Prefix: SY
 
 ## Goal
 
-`molt system` frees space the user's own files can't reach: the pacman package cache, the systemd journal, and old coredumps. It is the one explicit privileged step that P-04 allows. It names every command it would run, previews each one without privileges, asks, and only then runs the commands through `sudo`. molt itself never runs as root.
+`onyx system` frees space the user's own files can't reach: the pacman package cache, the systemd journal, and old coredumps. It is the one explicit privileged step that P-04 allows. It names every command it would run, previews each one without privileges, asks, and only then runs the commands through `sudo`. onyx itself never runs as root.
 
 ## Non-goals
 
-- Deleting system files itself. Every task is an owning tool's command (P-07); molt runs no safe-delete plan as root, and `Privilege::Root` stays unused.
+- Deleting system files itself. Every task is an owning tool's command (P-07); onyx runs no safe-delete plan as root, and `Privilege::Root` stays unused.
 - Docker, Flatpak and Snap. They are separate tasks for later, with their own review.
 - Other package managers (apt, dnf, zypper). Their tasks come later; this spec defines the shape they fit into.
 - Running as root, or keeping a `sudo` session alive between commands. `sudo`'s own timestamp handles repeat prompts.
@@ -17,7 +17,7 @@ Prefix: SY
 
 ## Model
 
-1. Start up (004). Root is still refused (CL-07): the user runs `molt system`, and molt runs `sudo` for each command.
+1. Start up (004). Root is still refused (CL-07): the user runs `onyx system`, and onyx runs `sudo` for each command.
 2. **Detect** (P-10): each task is active only when its tools are found on the absolute `$PATH` entries (SC-10), as RE-08 does for rules.
 3. **Preview** (P-14): for each active task, run its read-only preview command, without `sudo`, and show the task, its current size, the preview's summary, and the exact command a live run would run.
 4. **Ask** (P-06): one yes/no for the whole list, default no.
@@ -39,13 +39,13 @@ Prefix: SY
 ## Requirements
 
 ### Choosing
-- **SY-01** `molt system` lists every active task. `--only <id>…` and `--skip <id>…` narrow the list; an unknown id is a usage error (exit 2), as in CN-02.
+- **SY-01** `onyx system` lists every active task. `--only <id>…` and `--skip <id>…` narrow the list; an unknown id is a usage error (exit 2), as in CN-02.
 - **SY-02** A task whose tools aren't found is left out and reported as inactive (P-10). A tool is found only on an absolute `$PATH` entry (SC-10), and `sudo` must be found the same way, or every task is inactive.
 
 ### Preview and consent
 - **SY-03** Every run, live or dry, shows the preview first (P-14): each task's name, its current size, its preview's last line of output ("nothing to remove" if it printed none), and the exact live command line, with the absolute `sudo` path in front.
 - **SY-04** Preview commands run without `sudo`, with no shell, stdin closed, and `$PATH` limited to its absolute entries. Their output goes to stderr. A preview that fails or can't start is reported, and its task is still shown with its current size.
-- **SY-05** A dry run (`--dry-run`, the config, or `MOLT_DRY_RUN`, with the CL-06 notice) stops after the preview. It never runs `sudo` and never prompts for a password (P-05).
+- **SY-05** A dry run (`--dry-run`, the config, or `ONYX_DRY_RUN`, with the CL-06 notice) stops after the preview. It never runs `sudo` and never prompts for a password (P-05).
 - **SY-06** A live run asks once, default no, as CN-05 does: anything but `y` or `yes` changes nothing and exits 0 with "Nothing changed." Without a terminal on stdin it needs `--yes`, or it prints the preview and exits 1.
 
 ### Acting
@@ -63,7 +63,7 @@ Prefix: SY
 - SY-05 / P-05: with `--dry-run`, the fake `sudo` records nothing, and only preview arguments are recorded.
 - SY-07: the recorded `sudo` arguments start with `--` and an absolute tool path.
 - SY-02: with no `paccache` on `$PATH`, the pacman task is inactive, and a relative `$PATH` entry holding a fake tool is ignored.
-- SY-08: a fake tool that exits 1 makes its task failed, the next task still runs, and molt exits 3.
+- SY-08: a fake tool that exits 1 makes its task failed, the next task still runs, and onyx exits 3.
 - Sizes are measured under a root folder the library takes; the binary passes `/`. Unit tests pass a temp root, and a fake tool that removes a file there proves SY-09. Smoke tests use the real root, which is only read, and don't assert sizes.
 
 ## Decisions
@@ -71,4 +71,4 @@ Prefix: SY
 - **A separate command.** `sudo` never appears in `clean`.
 - **pacman keeps two versions** of installed packages (`-rk2`) and drops uninstalled ones (`-ruk0`).
 - **The journal is trimmed to 500 MiB.**
-- **Coredumps follow the system's own age rule** through `systemd-tmpfiles`. molt decides nothing about them and deletes nothing as root.
+- **Coredumps follow the system's own age rule** through `systemd-tmpfiles`. onyx decides nothing about them and deletes nothing as root.

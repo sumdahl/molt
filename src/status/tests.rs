@@ -1,4 +1,4 @@
-//! Tests for `molt status` (specs/013-status.md). The parsers get fixtures; the readers
+//! Tests for `onyx status` (specs/013-status.md). The parsers get fixtures; the readers
 //! only read this machine.
 
 use super::*;
@@ -128,7 +128,7 @@ fn st_05_a_child_that_isnt_reaped_is_a_zombie() {
 fn st_06_nearly_full_disks_point_at_analyze() {
     let full = Disk::from_counts("/data".to_owned(), "ext4".to_owned(), 4096, 100, 5, 5);
     let fine = Disk::from_counts("/".to_owned(), "ext4".to_owned(), 4096, 100, 50, 50);
-    assert!(disk_line(&full).contains("(nearly full: try `molt analyze /data`)"));
+    assert!(disk_line(&full).contains("(nearly full: try `onyx analyze /data`)"));
     assert!(!disk_line(&fine).contains("nearly full"));
     let dead = Disk::unavailable("/mnt/nfs".to_owned(), "nfs4".to_owned());
     assert!(disk_line(&dead).contains("unavailable"));

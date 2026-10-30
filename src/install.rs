@@ -1,4 +1,4 @@
-//! `molt update` and `molt remove` (specs/020-self.md): molt's own copy, replaced only by
+//! `onyx update` and `onyx remove` (specs/020-self.md): onyx's own copy, replaced only by
 //! a release the maintainer signed, or taken off the machine. The network and the crypto
 //! are owning tools' (`curl`, `sha256sum`, `ssh-keygen`, `tar`, P-07).
 
@@ -16,19 +16,19 @@ use crate::scan::human_size;
 #[cfg(test)]
 mod tests;
 
-pub const RELEASES: &str = "https://github.com/sumdahl/molt/releases";
+pub const RELEASES: &str = "https://github.com/sumdahl/onyx/releases";
 /// SE-01: the one build each release publishes.
 const TARGET: &str = "x86_64-unknown-linux-musl";
 /// The maintainers' keys, built in (`.github/allowed_signers`).
 const SIGNERS: &str = include_str!("../.github/allowed_signers");
-const NAMESPACE: &str = "molt-release";
+const NAMESPACE: &str = "onyx-release";
 /// SE-01: no download is let grow past this.
 const MAX_BYTES: &str = "104857600";
 
 /// SE-09: only a debug build, which tests use, takes a test key.
 fn signers() -> Cow<'static, str> {
     #[cfg(debug_assertions)]
-    if let Some(path) = std::env::var_os("MOLT_TEST_ALLOWED_SIGNERS") {
+    if let Some(path) = std::env::var_os("ONYX_TEST_ALLOWED_SIGNERS") {
         if let Ok(text) = fs::read_to_string(path) {
             return Cow::Owned(text);
         }
@@ -50,7 +50,7 @@ fn principals(signers: &str) -> Vec<&str> {
 /// and it and its folder owned by you. `Err` says why not and what to use instead.
 pub fn own_binary(home: &Path, euid: Uid) -> Result<PathBuf, String> {
     let exe = fs::read_link("/proc/self/exe")
-        .map_err(|error| format!("can't tell where molt is installed: {error}"))?;
+        .map_err(|error| format!("can't tell where onyx is installed: {error}"))?;
     let owner = |path: &Path| fs::symlink_metadata(path).map(|meta| meta.uid()).ok();
     let mine = exe.starts_with(home)
         && owner(&exe) == Some(euid.as_raw())
@@ -59,7 +59,7 @@ pub fn own_binary(home: &Path, euid: Uid) -> Result<PathBuf, String> {
         Ok(exe)
     } else {
         Err(format!(
-            "molt at {} isn't a copy you own in your home, so whatever installed it \
+            "onyx at {} isn't a copy you own in your home, so whatever installed it \
              (pacman, apt, …) updates and removes it",
             exe.display()
         ))
@@ -87,7 +87,7 @@ impl Tools {
                 search_path: search_path.to_vec(),
             })
         })();
-        found.map_err(|tool| format!("`molt update` needs {tool}, which isn't installed"))
+        found.map_err(|tool| format!("`onyx update` needs {tool}, which isn't installed"))
     }
 
     fn run(&self, program: &Path, args: &[&OsStr], dir: &Path, stdin: Stdio) -> Option<Output> {
@@ -181,12 +181,12 @@ pub struct Prepared {
     pub binary: Option<PathBuf>,
 }
 
-/// SE-01: a new folder only molt can use, never one that was already there.
+/// SE-01: a new folder only onyx can use, never one that was already there.
 fn fresh_folder() -> std::io::Result<PathBuf> {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.subsec_nanos());
-    let folder = std::env::temp_dir().join(format!("molt-update-{}-{nanos}", std::process::id()));
+    let folder = std::env::temp_dir().join(format!("onyx-update-{}-{nanos}", std::process::id()));
     fs::DirBuilder::new().mode(0o700).create(&folder)?;
     Ok(folder)
 }
@@ -195,7 +195,7 @@ fn fresh_folder() -> std::io::Result<PathBuf> {
 /// that fails.
 pub fn prepare(tools: &Tools, tag: &str) -> std::io::Result<Prepared> {
     let folder = fresh_folder()?;
-    let top = format!("molt-{tag}-{TARGET}");
+    let top = format!("onyx-{tag}-{TARGET}");
     let tarball = format!("{top}.tar.gz");
     let url = format!("{RELEASES}/download/{tag}/{tarball}");
     let mut prepared = Prepared {
@@ -214,7 +214,7 @@ pub fn prepare(tools: &Tools, tag: &str) -> std::io::Result<Prepared> {
                 tools.download(&from, &folder.join(name), &folder)
             })
         }),
-        ("the checksum is signed by a molt maintainer", &|| {
+        ("the checksum is signed by an onyx maintainer", &|| {
             verify_signature(tools, &folder, &checksum, &signature)
         }),
         ("the checksum names this release's file", &|| {
@@ -242,16 +242,16 @@ pub fn prepare(tools: &Tools, tag: &str) -> std::io::Result<Prepared> {
             tools
                 .run(&tools.tar, &args, &folder, Stdio::null())
                 .is_some_and(|output| output.status.success())
-                && fs::symlink_metadata(folder.join(&top).join("molt"))
+                && fs::symlink_metadata(folder.join(&top).join("onyx"))
                     .is_ok_and(|meta| meta.file_type().is_file())
         }),
-        ("the new molt runs and says it's this version", &|| {
-            let binary = folder.join(&top).join("molt");
+        ("the new onyx runs and says it's this version", &|| {
+            let binary = folder.join(&top).join("onyx");
             let version = tag.trim_start_matches('v');
             tools
                 .run(&binary, &[OsStr::new("--version")], &folder, Stdio::null())
                 .is_some_and(|output| {
-                    String::from_utf8_lossy(&output.stdout).trim() == format!("molt {version}")
+                    String::from_utf8_lossy(&output.stdout).trim() == format!("onyx {version}")
                 })
         }),
     ];
@@ -265,7 +265,7 @@ pub fn prepare(tools: &Tools, tag: &str) -> std::io::Result<Prepared> {
             return Ok(prepared);
         }
     }
-    prepared.binary = Some(folder.join(&top).join("molt"));
+    prepared.binary = Some(folder.join(&top).join("onyx"));
     Ok(prepared)
 }
 
@@ -348,13 +348,13 @@ fn entries_are_safe(names: &str, long: &str, top: &str) -> bool {
         && names.lines().count() == long.lines().count()
 }
 
-/// SE-07: what `molt remove` takes, as far as it exists: the binary (when SE-04 allows),
-/// molt's config, cache and state (without the log unless `with_log`), and the
+/// SE-07: what `onyx remove` takes, as far as it exists: the binary (when SE-04 allows),
+/// onyx's config, cache and state (without the log unless `with_log`), and the
 /// completion files README names.
 pub fn leftovers(binary: Option<&Path>, dirs: &crate::rules::Dirs, with_log: bool) -> Vec<PathBuf> {
-    let state = dirs.state.join("molt");
+    let state = dirs.state.join("onyx");
     let mut paths: Vec<PathBuf> = binary.map(Path::to_path_buf).into_iter().collect();
-    paths.extend([dirs.config.join("molt"), dirs.cache.join("molt")]);
+    paths.extend([dirs.config.join("onyx"), dirs.cache.join("onyx")]);
     if with_log {
         paths.push(state);
     } else if let Ok(entries) = fs::read_dir(&state) {
@@ -367,9 +367,9 @@ pub fn leftovers(binary: Option<&Path>, dirs: &crate::rules::Dirs, with_log: boo
         paths.extend(inside);
     }
     paths.extend([
-        dirs.data.join("bash-completion/completions/molt"),
-        dirs.home.join(".zfunc/_molt"),
-        dirs.config.join("fish/completions/molt.fish"),
+        dirs.data.join("bash-completion/completions/onyx"),
+        dirs.home.join(".zfunc/_onyx"),
+        dirs.config.join("fish/completions/onyx.fish"),
     ]);
     paths.retain(|path| fs::symlink_metadata(path).is_ok());
     paths

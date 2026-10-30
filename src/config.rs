@@ -1,4 +1,4 @@
-//! Config and whitelist (specs/003-config.md): `$XDG_CONFIG_HOME/molt/config.toml`.
+//! Config and whitelist (specs/003-config.md): `$XDG_CONFIG_HOME/onyx/config.toml`.
 
 use std::ffi::{OsStr, OsString};
 use std::fmt;
@@ -42,7 +42,7 @@ pub enum ConfigError {
     },
     /// CF-06.
     UnknownRule(RuleId),
-    /// CF-07: `MOLT_DRY_RUN` is set to something other than `0` or `1`.
+    /// CF-07: `ONYX_DRY_RUN` is set to something other than `0` or `1`.
     BadDryRunEnv(OsString),
 }
 
@@ -109,7 +109,7 @@ impl Config {
             .collect())
     }
 
-    /// CF-07: whether this run changes anything. `env` is `MOLT_DRY_RUN`.
+    /// CF-07: whether this run changes anything. `env` is `ONYX_DRY_RUN`.
     pub fn decide(
         &self,
         requested: Requested,
@@ -184,7 +184,7 @@ impl fmt::Display for ConfigError {
             Self::Read { path, source } => write!(f, "can't read {}: {source}", path.display()),
             Self::Parse { path, source } => write!(f, "{}: {source}", path.display()),
             Self::UnknownRule(id) => write!(f, "disabled_rules names unknown rule `{id}`"),
-            Self::BadDryRunEnv(value) => write!(f, "MOLT_DRY_RUN must be 0 or 1, not {value:?}"),
+            Self::BadDryRunEnv(value) => write!(f, "ONYX_DRY_RUN must be 0 or 1, not {value:?}"),
         }
     }
 }

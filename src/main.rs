@@ -6,22 +6,22 @@ use std::process::ExitCode;
 use std::time::SystemTime;
 
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
-use molt::analyze;
-use molt::clean::{self, Busy};
-use molt::completions::{self, Shell};
-use molt::config::{Decision, Requested};
-use molt::install;
-use molt::installer;
-use molt::optimize;
-use molt::processes;
-use molt::purge;
-use molt::rules::{Rule, RuleId};
-use molt::safe_delete::{self, Candidate, Execution, Mode, Permissions, Plan, Privilege};
-use molt::scan::{self, Survey};
-use molt::startup::{self, Startup};
-use molt::system;
-use molt::uninstall::package::{self, PackagePreview};
-use molt::uninstall::{self, AppName};
+use onyx::analyze;
+use onyx::clean::{self, Busy};
+use onyx::completions::{self, Shell};
+use onyx::config::{Decision, Requested};
+use onyx::install;
+use onyx::installer;
+use onyx::optimize;
+use onyx::processes;
+use onyx::purge;
+use onyx::rules::{Rule, RuleId};
+use onyx::safe_delete::{self, Candidate, Execution, Mode, Permissions, Plan, Privilege};
+use onyx::scan::{self, Survey};
+use onyx::startup::{self, Startup};
+use onyx::system;
+use onyx::uninstall::package::{self, PackagePreview};
+use onyx::uninstall::{self, AppName};
 
 /// Reclaim disk space on Linux, safely.
 #[derive(Parser)]
@@ -32,7 +32,7 @@ struct Cli {
     /// Show what would happen without changing anything.
     #[arg(long, global = true, conflicts_with = "live")]
     dry_run: bool,
-    /// Act, even when the config or MOLT_DRY_RUN asks for a dry run.
+    /// Act, even when the config or ONYX_DRY_RUN asks for a dry run.
     #[arg(long, global = true)]
     live: bool,
     /// Don't ask for confirmation.
@@ -45,7 +45,7 @@ struct Cli {
 
 #[derive(Clone, Subcommand)]
 enum Command {
-    /// Show how much space molt could free, without changing anything (the default).
+    /// Show how much space onyx could free, without changing anything (the default).
     Scan,
     /// Free the space `scan` shows: preview first, then ask, then clean.
     Clean(CleanArgs),
@@ -69,14 +69,14 @@ enum Command {
     /// Remove packages nothing needs (orphans, autoremove) through each package manager,
     /// run with sudo: preview first, then ask.
     Optimize(OptimizeArgs),
-    /// Show what molt has removed and run, newest first. Changes nothing.
+    /// Show what onyx has removed and run, newest first. Changes nothing.
     History(HistoryArgs),
     /// Print a shell completion script: bash, zsh or fish.
     Completions(CompletionsArgs),
-    /// Replace molt with the newest release the maintainer signed: preview first, then
+    /// Replace onyx with the newest release the maintainer signed: preview first, then
     /// ask. Only a copy in your home; a package manager updates its own.
     Update,
-    /// Take molt off this machine (binary, config, cache, state): preview first, then
+    /// Take onyx off this machine (binary, config, cache, state): preview first, then
     /// ask. The operation log stays unless --with-log.
     Remove(RemoveArgs),
 }
@@ -116,7 +116,7 @@ struct PurgeArgs {
 
 #[derive(Clone, Args)]
 struct InstallerArgs {
-    /// Only these rules (ids as in `molt installer --json`).
+    /// Only these rules (ids as in `onyx installer --json`).
     #[arg(long, num_args = 1.., value_name = "ID")]
     only: Vec<String>,
     /// Leave these rules out.
@@ -211,7 +211,7 @@ fn since_date(date: &str) -> Result<jiff::Timestamp, String> {
 
 #[derive(Clone, Args)]
 struct CleanArgs {
-    /// Clean only these rules (ids as in `molt scan --json`).
+    /// Clean only these rules (ids as in `onyx scan --json`).
     #[arg(long, num_args = 1.., value_name = "ID")]
     only: Vec<String>,
     /// Leave these rules out.
@@ -251,7 +251,7 @@ impl Cli {
 fn main() -> ExitCode {
     // BN-02: the banner tops the main help on a terminal.
     let mut command = Cli::command();
-    if let Some(banner) = molt::banner::for_terminal() {
+    if let Some(banner) = onyx::banner::for_terminal() {
         // clap puts its own blank line after it.
         command = command.before_help(banner.trim_end().to_owned());
     }
@@ -264,7 +264,7 @@ fn main() -> ExitCode {
         Ok(code) => code,
         Err(error) => {
             // CL-03, CL-09
-            eprintln!("molt: {error}");
+            eprintln!("onyx: {error}");
             if cli.json {
                 println!("{}", serde_json::json!({ "error": error.to_string() }));
             }
@@ -279,14 +279,14 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         print!("{}", completions::script(args.shell, Cli::command()));
         return Ok(ExitCode::SUCCESS);
     }
-    // MN-01: a bare `molt` with a terminal on both ends is the menu.
+    // MN-01: a bare `onyx` with a terminal on both ends is the menu.
     let terminal = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
     if cli.command.is_none() && !cli.json && terminal {
         return run_menu(cli);
     }
-    // BN-02, BN-03: a bare `molt` only, never above a named command or JSON.
+    // BN-02, BN-03: a bare `onyx` only, never above a named command or JSON.
     if cli.command.is_none() && !cli.json {
-        if let Some(banner) = molt::banner::for_terminal() {
+        if let Some(banner) = onyx::banner::for_terminal() {
             print!("{banner}");
         }
     }
@@ -315,7 +315,7 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         // ST-01, ST-08: read-only, and always 0.
         Some(Command::Status(args)) if args.watch => run_watch(cli, args),
         Some(Command::Status(_)) => {
-            let status = molt::status::status();
+            let status = onyx::status::status();
             if cli.json {
                 println!("{}", serde_json::to_string(&status)?);
             } else {
@@ -335,7 +335,7 @@ fn run_clean(
         Ok(rules) => rules,
         Err(unknown) => {
             // CN-02: a typo must not clean more than meant.
-            eprintln!("molt: no enabled rule has the id `{unknown}`; nothing changed");
+            eprintln!("onyx: no enabled rule has the id `{unknown}`; nothing changed");
             return Ok(ExitCode::from(2));
         }
     };
@@ -356,7 +356,7 @@ fn run_purge(
         Ok(kinds) => kinds,
         Err(unknown) => {
             // PG-08
-            eprintln!("molt: there is no project kind `{unknown}`; nothing changed");
+            eprintln!("onyx: there is no project kind `{unknown}`; nothing changed");
             return Ok(ExitCode::from(2));
         }
     };
@@ -370,9 +370,9 @@ fn run_purge(
     // PG-01
     if roots.is_empty() {
         eprintln!(
-            "molt: no purge_paths set. Add the folders holding your projects to {}, \
+            "onyx: no purge_paths set. Add the folders holding your projects to {}, \
              e.g. purge_paths = [\"~/projects\"]",
-            startup.env.dirs.config.join("molt/config.toml").display()
+            startup.env.dirs.config.join("onyx/config.toml").display()
         );
     }
     let mut findings = purge::find(&roots, &startup.env.search_path, SystemTime::now());
@@ -385,7 +385,7 @@ fn run_purge(
         .retain(|skip| picked(&skip.rule) || !is_kind(&skip.rule));
     let mut preview =
         scan::measure_findings(&kinds, findings, startup, args.trash.then_some(Mode::Trash))?;
-    preview.report.freed_by = "molt purge".to_owned();
+    preview.report.freed_by = "onyx purge".to_owned();
     print_preview(cli, &preview, &[])?;
     if !cli.json {
         print_left_out(
@@ -409,17 +409,17 @@ fn run_installer(
     let rules = match clean::select(&startup.installers, &args.only, &args.skip) {
         Ok(rules) => rules,
         Err(unknown) => {
-            eprintln!("molt: no installer rule has the id `{unknown}`; nothing changed");
+            eprintln!("onyx: no installer rule has the id `{unknown}`; nothing changed");
             return Ok(ExitCode::from(2));
         }
     };
     let env = &startup.env;
-    let mut findings = molt::rules::find(&rules, &env.dirs, &env.search_path);
+    let mut findings = onyx::rules::find(&rules, &env.dirs, &env.search_path);
     installer::keep_old_files(&mut findings, SystemTime::now());
     // IN-04
     let mode = args.permanent.then_some(Mode::Permanent);
     let mut preview = scan::measure_findings(&rules, findings, startup, mode)?;
-    preview.report.freed_by = "molt installer".to_owned();
+    preview.report.freed_by = "onyx installer".to_owned();
     print_preview(cli, &preview, &[])?;
     if !cli.json {
         print_left_out(
@@ -440,7 +440,7 @@ fn run_uninstall(
     let app = match AppName::try_from(args.app.as_str()) {
         Ok(app) => app,
         Err(why) => {
-            eprintln!("molt: {why}; nothing changed");
+            eprintln!("onyx: {why}; nothing changed");
             return Ok(ExitCode::from(2));
         }
     };
@@ -451,14 +451,14 @@ fn run_uninstall(
         .is_empty()
         .then(|| package::find(&app, search_path))
         .flatten();
-    let sudo = molt::rules::find_tool("sudo", search_path);
+    let sudo = onyx::rules::find_tool("sudo", search_path);
     let package_preview = package
         .as_ref()
         .map(|package| package::preview(package, sudo.as_deref(), search_path));
     // UN-05
     let mode = args.permanent.then_some(Mode::Permanent);
     let mut preview = scan::survey(&rules, startup, mode)?;
-    preview.report.freed_by = format!("molt uninstall {app}");
+    preview.report.freed_by = format!("onyx uninstall {app}");
     print_uninstall_preview(cli, &app, &preview, &busy, package_preview.as_ref())?;
 
     // UN-10: a dry run never reaches sudo.
@@ -474,7 +474,7 @@ fn run_uninstall(
     }
     if let Some(removal) = &removal {
         // SY-11: fail closed before the command.
-        let mut log = molt::safe_delete::CommandLog::open(&startup.env.context(&startup.config))?;
+        let mut log = onyx::safe_delete::CommandLog::open(&startup.env.context(&startup.config))?;
         let run = package::remove(removal, search_path, &mut log)?;
         if cli.json {
             println!("{}", serde_json::json!({ "package": run }));
@@ -644,15 +644,15 @@ fn run_analyze(
 fn run_watch(cli: &Cli, args: &StatusArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let terminal = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
     let refused = match (cli.json, terminal) {
-        (true, _) => Some("--watch can't be used with --json; poll `molt status --json` instead"),
-        (_, false) => Some("--watch needs a terminal; use `molt status` or `--json` instead"),
+        (true, _) => Some("--watch can't be used with --json; poll `onyx status --json` instead"),
+        (_, false) => Some("--watch needs a terminal; use `onyx status` or `--json` instead"),
         _ => None,
     };
     if let Some(why) = refused {
-        eprintln!("molt: {why}");
+        eprintln!("onyx: {why}");
         return Ok(ExitCode::from(2));
     }
-    molt::status::watch(std::time::Duration::from_secs(args.interval))?;
+    onyx::status::watch(std::time::Duration::from_secs(args.interval))?;
     Ok(ExitCode::SUCCESS)
 }
 
@@ -667,7 +667,7 @@ fn run_system(
     let selected = match system::select(tasks.active.clone(), &args.only, &args.skip) {
         Ok(selected) => selected,
         Err(unknown) => {
-            eprintln!("molt: there is no system task `{unknown}`; nothing changed");
+            eprintln!("onyx: there is no system task `{unknown}`; nothing changed");
             return Ok(ExitCode::from(2));
         }
     };
@@ -695,7 +695,7 @@ fn run_system(
         return Ok(ExitCode::SUCCESS);
     }
     // SY-11: fail closed before the first command.
-    let mut log = molt::safe_delete::CommandLog::open(&startup.env.context(&startup.config))?;
+    let mut log = onyx::safe_delete::CommandLog::open(&startup.env.context(&startup.config))?;
     let result = system::act(sudo, &selected, root, search_path, &mut log)?;
     if cli.json {
         println!("{}", serde_json::json!({ "result": result }));
@@ -719,13 +719,13 @@ fn self_plan(paths: &[PathBuf], mode: Mode, execution: Execution) -> Plan {
     }
 }
 
-/// SE-06: molt's own download folder, removed whatever happened and never logged.
-fn remove_scratch(folder: &std::path::Path, ctx: &molt::safe_delete::Context) {
+/// SE-06: onyx's own download folder, removed whatever happened and never logged.
+fn remove_scratch(folder: &std::path::Path, ctx: &onyx::safe_delete::Context) {
     let mut quiet = ctx.clone();
     quiet.oplog = None;
     let plan = self_plan(&[folder.to_path_buf()], Mode::Permanent, Execution::Live);
     if safe_delete::execute(&plan, &quiet).is_err() {
-        eprintln!("molt: couldn't remove {}", folder.display());
+        eprintln!("onyx: couldn't remove {}", folder.display());
     }
 }
 
@@ -741,7 +741,7 @@ fn run_update(cli: &Cli, startup: &Startup) -> Result<ExitCode, Box<dyn std::err
     let tools = install::Tools::find(&startup.env.search_path)?;
     let tag = tools.latest()?;
     if !install::is_newer(&tag, current) {
-        println!("molt {current} is the newest release. Nothing changed.");
+        println!("onyx {current} is the newest release. Nothing changed.");
         return Ok(ExitCode::SUCCESS);
     }
     let prepared = install::prepare(&tools, &tag)?;
@@ -753,7 +753,7 @@ fn run_update(cli: &Cli, startup: &Startup) -> Result<ExitCode, Box<dyn std::err
 fn update_from(
     cli: &Cli,
     startup: &Startup,
-    ctx: &molt::safe_delete::Context,
+    ctx: &onyx::safe_delete::Context,
     binary: &std::path::Path,
     current: &str,
     prepared: &install::Prepared,
@@ -761,7 +761,7 @@ fn update_from(
     // SE-03
     println!("Preview. Nothing has changed yet:\n");
     println!(
-        "  molt {current} -> {}",
+        "  onyx {current} -> {}",
         prepared.tag.trim_start_matches('v')
     );
     println!("  from {}", prepared.url);
@@ -776,18 +776,18 @@ fn update_from(
         "  would replace {} (the old one goes to the trash)\n",
         binary.display()
     );
-    if stop_for_dry_run(startup) || !go_ahead(cli, "Replace molt?")? {
+    if stop_for_dry_run(startup) || !go_ahead(cli, "Replace onyx?")? {
         return Ok(ExitCode::SUCCESS);
     }
     // SY-11: fail closed before the swap.
-    let mut log = molt::safe_delete::CommandLog::open(ctx)?;
+    let mut log = onyx::safe_delete::CommandLog::open(ctx)?;
     let old = safe_delete::swap_in(binary, new, ctx.euid).map_err(|errno| {
-        format!("couldn't put the new molt in place ({errno}); nothing changed")
+        format!("couldn't put the new onyx in place ({errno}); nothing changed")
     })?;
     let version = prepared.tag.trim_start_matches('v');
     log.record(
         &[
-            "molt".into(),
+            "onyx".into(),
             "update".into(),
             "--to".into(),
             version.into(),
@@ -799,13 +799,13 @@ fn update_from(
     for (path, outcome) in &report.results {
         println!("{}", install::outcome_line(path, outcome));
     }
-    println!("molt is now {version}.");
+    println!("onyx is now {version}.");
     Ok(ExitCode::from(
         u8::try_from(report.exit_code()).unwrap_or(3),
     ))
 }
 
-/// SE-07, SE-08: molt's own files, after the preview and a yes.
+/// SE-07, SE-08: onyx's own files, after the preview and a yes.
 fn run_remove(
     cli: &Cli,
     args: &RemoveArgs,
@@ -830,14 +830,14 @@ fn run_remove(
     if !args.with_log {
         println!("The operation log stays (--with-log removes it).");
     }
-    if preview.results.is_empty() || stop_for_dry_run(startup) || !go_ahead(cli, "Remove molt?")? {
+    if preview.results.is_empty() || stop_for_dry_run(startup) || !go_ahead(cli, "Remove onyx?")? {
         return Ok(ExitCode::SUCCESS);
     }
     let report = safe_delete::execute(&self_plan(&paths, mode, Execution::Live), &ctx)?;
     for (path, outcome) in &report.results {
         println!("{}", install::outcome_line(path, outcome));
     }
-    println!("molt is removed.");
+    println!("onyx is removed.");
     Ok(ExitCode::from(
         u8::try_from(report.exit_code()).unwrap_or(3),
     ))
@@ -846,10 +846,10 @@ fn run_remove(
 /// MN-02 to MN-04: the menu, until it's quit. Each pick is parsed and run like a
 /// typed command line, with the menu's global flags.
 fn run_menu(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
-    let banner = molt::banner::for_terminal().unwrap_or_default();
+    let banner = onyx::banner::for_terminal().unwrap_or_default();
     let mut selected = 0;
-    while let Some(entry) = molt::menu::pick(&banner, &mut selected)? {
-        let mut args: Vec<std::ffi::OsString> = vec!["molt".into()];
+    while let Some(entry) = onyx::menu::pick(&banner, &mut selected)? {
+        let mut args: Vec<std::ffi::OsString> = vec!["onyx".into()];
         for (on, flag) in [
             (cli.dry_run, "--dry-run"),
             (cli.live, "--live"),
@@ -861,19 +861,19 @@ fn run_menu(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         }
         args.extend(entry.args().iter().map(Into::into));
         match entry {
-            molt::menu::Entry::Uninstall => match ask_app()? {
+            onyx::menu::Entry::Uninstall => match ask_app()? {
                 Some(app) => args.push(app.into()),
                 None => continue,
             },
-            molt::menu::Entry::Analyze => args.extend(std::env::var_os("HOME")),
+            onyx::menu::Entry::Analyze => args.extend(std::env::var_os("HOME")),
             _ => {}
         }
         let picked = Cli::try_parse_from(&args)?;
         let code = run(&picked).unwrap_or_else(|error| {
-            eprintln!("molt: {error}");
+            eprintln!("onyx: {error}");
             ExitCode::from(1)
         });
-        // MN-04: ExitCode can't be read back, and molt only uses 0 to 3.
+        // MN-04: ExitCode can't be read back, and onyx only uses 0 to 3.
         if let Some(n) = (1..=3).find(|n| code == ExitCode::from(*n)) {
             println!("\nExit code {n}.");
         }
@@ -900,9 +900,9 @@ fn run_history(
     args: &HistoryArgs,
     startup: &Startup,
 ) -> Result<ExitCode, Box<dyn std::error::Error>> {
-    // The path the log is written to, even when MOLT_NO_OPLOG stops new entries.
-    let log = startup.env.dirs.state.join("molt/operations.log");
-    let Some(history) = molt::history::read(&log)? else {
+    // The path the log is written to, even when ONYX_NO_OPLOG stops new entries.
+    let log = startup.env.dirs.state.join("onyx/operations.log");
+    let Some(history) = onyx::history::read(&log)? else {
         if cli.json {
             println!(
                 "{}",
@@ -923,7 +923,7 @@ fn run_history(
     Ok(ExitCode::from(shown.exit_code()))
 }
 
-/// OP-01 to OP-08: like `molt system`, the preview, one question, then each command
+/// OP-01 to OP-08: like `onyx system`, the preview, one question, then each command
 /// through sudo.
 fn run_optimize(
     cli: &Cli,
@@ -935,7 +935,7 @@ fn run_optimize(
     let selected = match optimize::select(tasks.active.clone(), &args.only, &args.skip) {
         Ok(selected) => selected,
         Err(unknown) => {
-            eprintln!("molt: there is no optimize task `{unknown}`; nothing changed");
+            eprintln!("onyx: there is no optimize task `{unknown}`; nothing changed");
             return Ok(ExitCode::from(2));
         }
     };
@@ -954,7 +954,7 @@ fn run_optimize(
         return Ok(ExitCode::SUCCESS);
     }
     // SY-11: fail closed before the first command.
-    let mut log = molt::safe_delete::CommandLog::open(&startup.env.context(&startup.config))?;
+    let mut log = onyx::safe_delete::CommandLog::open(&startup.env.context(&startup.config))?;
     let result = optimize::act(&preview, search_path, &mut log)?;
     if cli.json {
         println!("{}", serde_json::json!({ "result": result }));
@@ -970,7 +970,7 @@ fn stop_for_dry_run(startup: &Startup) -> bool {
         return false;
     };
     if let Some(notice) = startup::dry_run_notice(startup.decision) {
-        eprintln!("molt: {notice}");
+        eprintln!("onyx: {notice}");
     }
     true
 }

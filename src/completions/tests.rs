@@ -5,7 +5,7 @@ use clap::{Arg, ArgAction, Command};
 use super::*;
 
 fn command() -> Command {
-    Command::new("molt")
+    Command::new("onyx")
         .arg(
             Arg::new("dry-run")
                 .long("dry-run")
@@ -100,7 +100,7 @@ fn co_04_every_word_is_plain_so_nothing_needs_quoting() {
         assert!(!plain(bad), "{bad:?}");
     }
     // A tree with an unsafe word leaves that word out.
-    let tree = Tree::from(Command::new("molt").subcommand(
+    let tree = Tree::from(Command::new("onyx").subcommand(
         Command::new("ok").arg(Arg::new("v").long("v").value_parser(["fine", "$(rm)"])),
     ));
     assert_eq!(

@@ -1,10 +1,10 @@
 # AGENTS.md
 
-Guide for AI agents (and humans) working on molt, a Linux disk cleaner written in Rust. Read this before changing anything.
+Guide for AI agents (and humans) working on onyx, a Linux disk cleaner written in Rust. Read this before changing anything.
 
 ## The one rule
 
-molt deletes files. A bug here destroys someone's data. When in doubt, refuse, skip, and report (P-02).
+onyx deletes files. A bug here destroys someone's data. When in doubt, refuse, skip, and report (P-02).
 
 ## Workflow: one issue at a time
 
@@ -47,7 +47,7 @@ These are rules, not suggestions. Code that breaks them doesn't merge.
 - In test builds, `safe_delete::execute` panics if a live plan names anything outside the system temp directory. Don't weaken or bypass this tripwire.
 - Use real filesystem operations; don't mock the filesystem.
 - `tests/smoke.rs` must always pass: the binary starts, `--version` matches `Cargo.toml`, and bad flags exit with code 2.
-- Agents must never run molt against the real system except with `--dry-run`. Even then, read the dry run's output before anything else (P-14).
+- Agents must never run onyx against the real system except with `--dry-run`. Even then, read the dry run's output before anything else (P-14).
 
 ## Commands
 
@@ -73,16 +73,16 @@ Releases are cut from `main` by pushing a tag. `.github/workflows/release.yml` d
 2. Set `version` in `Cargo.toml` and run `cargo check` so `Cargo.lock` is updated.
 3. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and add a fresh empty `## [Unreleased]` above it.
 4. Update `README.md`, including the version shown in the install snippet.
-5. Commit `chore: release vX.Y.Z`, then sign the tag with a maintainer's SSH key listed in `.github/allowed_signers`: `git -c gpg.format=ssh -c user.signingkey=~/.ssh/id_personal.pub tag -s vX.Y.Z -m "molt vX.Y.Z"`, and `git push origin vX.Y.Z`. Releases are always signed; never use `git tag -a`.
+5. Commit `chore: release vX.Y.Z`, then sign the tag with a maintainer's SSH key listed in `.github/allowed_signers`: `git -c gpg.format=ssh -c user.signingkey=~/.ssh/id_personal.pub tag -s vX.Y.Z -m "onyx vX.Y.Z"`, and `git push origin vX.Y.Z`. Releases are always signed; never use `git tag -a`.
 6. The workflow then:
    - refuses a tag that isn't signed by a key in `.github/allowed_signers`,
    - checks that the tag matches `Cargo.toml` and that `CHANGELOG.md` has a section for the version,
    - runs fmt, clippy and the tests,
    - builds a static musl binary and smoke-tests it,
    - publishes a GitHub Release with that changelog section as the notes, plus the tarball and its sha256.
-7. The maintainer signs the checksum, so `molt update` will install the release (specs/020-self.md):
+7. The maintainer signs the checksum, so `onyx update` will install the release (specs/020-self.md):
    `gh release download vX.Y.Z -p '*.sha256'`, then
-   `ssh-keygen -Y sign -f ~/.ssh/id_personal -n molt-release molt-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz.sha256`, then
-   `gh release upload vX.Y.Z molt-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz.sha256.sig`.
+   `ssh-keygen -Y sign -f ~/.ssh/id_personal -n onyx-release onyx-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz.sha256`, then
+   `gh release upload vX.Y.Z onyx-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz.sha256.sig`.
 
 Agents prepare the release commit. A human confirms before the tag is pushed. The signing key has a passphrase, so the maintainer signs the tag (or loads the key into `ssh-agent` first).

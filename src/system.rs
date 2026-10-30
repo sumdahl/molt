@@ -1,4 +1,4 @@
-//! `molt system` (specs/007-system.md): the one privileged step (P-04). molt runs owning
+//! `onyx system` (specs/007-system.md): the one privileged step (P-04). onyx runs owning
 //! tools' commands through `sudo`, and never deletes anything as root itself.
 
 use std::collections::HashSet;

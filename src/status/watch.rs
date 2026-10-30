@@ -1,4 +1,4 @@
-//! `molt status --watch` (specs/013-status.md ST-15 to ST-19): the report full screen,
+//! `onyx status --watch` (specs/013-status.md ST-15 to ST-19): the report full screen,
 //! refreshed, with rates over each whole period. Reads only.
 
 use std::error::Error;

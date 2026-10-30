@@ -45,20 +45,20 @@ jobs:
 
       - name: Smoke test release binary
         run: |
-          bin="target/$TARGET/release/molt"
-          [ "$("$bin" --version)" = "molt ${GITHUB_REF_NAME#v}" ]
+          bin="target/$TARGET/release/onyx"
+          [ "$("$bin" --version)" = "onyx ${GITHUB_REF_NAME#v}" ]
           "$bin" --help > /dev/null
 
       # ponytail: x86_64 only; add an aarch64 matrix entry (ubuntu-24.04-arm) when there are arm users
       - name: Package
         run: |
-          name="molt-$GITHUB_REF_NAME-$TARGET"
+          name="onyx-$GITHUB_REF_NAME-$TARGET"
           mkdir "$name"
-          cp "target/$TARGET/release/molt" README.md CHANGELOG.md LICENSE "$name/"
+          cp "target/$TARGET/release/onyx" README.md CHANGELOG.md LICENSE "$name/"
           tar czf "$name.tar.gz" "$name"
           sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
 
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --title "molt $GITHUB_REF_NAME" --notes-file notes.md molt-*.tar.gz molt-*.sha256
+        run: gh release create "$GITHUB_REF_NAME" --title "onyx $GITHUB_REF_NAME" --notes-file notes.md onyx-*.tar.gz onyx-*.sha256

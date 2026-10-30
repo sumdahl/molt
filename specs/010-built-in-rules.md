@@ -5,7 +5,7 @@ Prefix: BR
 
 ## Goal
 
-The first set of rules molt ships with: the caches that actually fill a Linux developer's disk. Each one is data the owning program rebuilds by itself, so removing it costs a re-download or a rebuild, never the user's work. The list is written down and reviewed here, because a wrong path in it deletes the wrong data on every machine that runs molt.
+The first set of rules onyx ships with: the caches that actually fill a Linux developer's disk. Each one is data the owning program rebuilds by itself, so removing it costs a re-download or a rebuild, never the user's work. The list is written down and reviewed here, because a wrong path in it deletes the wrong data on every machine that runs onyx.
 
 ## Non-goals
 
@@ -68,7 +68,7 @@ Only the cache folders, never the profile: bookmarks, passwords and sessions liv
 
 ### Installers
 
-The six `installer-*` rules are reviewed in [009](009-installer.md). They're `user-content`, in the `installers` category, and only `molt installer` uses them. They name no processes: no program keeps a downloaded installer open (BR-02).
+The six `installer-*` rules are reviewed in [009](009-installer.md). They're `user-content`, in the `installers` category, and only `onyx installer` uses them. They name no processes: no program keeps a downloaded installer open (BR-02).
 
 ### System (your files)
 

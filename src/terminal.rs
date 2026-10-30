@@ -1,5 +1,5 @@
 //! A full-screen terminal for the `analyze` browser and `status --watch` (AN-15, AN-16,
-//! ST-16): raw mode through `rustix` termios and ANSI escapes, written in molt, with no
+//! ST-16): raw mode through `rustix` termios and ANSI escapes, written in onyx, with no
 //! terminal crate (012 Decisions).
 
 use std::io::{self, Write};
@@ -8,7 +8,7 @@ use std::os::fd::AsFd;
 use rustix::termios::{self, OptionalActions, SpecialCodeIndex, Termios};
 
 /// The terminal in raw mode on the alternate screen. Dropping it puts everything back,
-/// whether molt leaves by `q`, an error or a panic (AN-15).
+/// whether onyx leaves by `q`, an error or a panic (AN-15).
 pub(crate) struct Screen {
     saved: Termios,
 }

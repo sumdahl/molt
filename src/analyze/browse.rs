@@ -50,7 +50,7 @@ pub fn keys(bytes: &[u8]) -> Vec<Key> {
             b'?' => Key::Help,
             b' ' => Key::Mark,
             b'd' => Key::Trash,
-            // Raw mode turns Ctrl-C into a byte, so it never kills molt mid-draw.
+            // Raw mode turns Ctrl-C into a byte, so it never kills onyx mid-draw.
             b'q' | 0x03 => Key::Quit,
             0x1b => match escape(rest) {
                 Some((key, len)) => {

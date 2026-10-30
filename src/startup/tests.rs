@@ -77,16 +77,16 @@ fn cl_04_xdg_dirs_are_used_only_when_absolute() {
 
 #[test]
 fn cl_05_the_oplog_lives_in_state_and_can_be_turned_off() {
-    let log = Some(PathBuf::from("/h/.local/state/molt/operations.log"));
+    let log = Some(PathBuf::from("/h/.local/state/onyx/operations.log"));
     assert_eq!(env(&[("HOME", "/h")]).unwrap().oplog, log);
     assert_eq!(
-        env(&[("HOME", "/h"), ("MOLT_NO_OPLOG", "0")])
+        env(&[("HOME", "/h"), ("ONYX_NO_OPLOG", "0")])
             .unwrap()
             .oplog,
         log
     );
     assert_eq!(
-        env(&[("HOME", "/h"), ("MOLT_NO_OPLOG", "1")])
+        env(&[("HOME", "/h"), ("ONYX_NO_OPLOG", "1")])
             .unwrap()
             .oplog,
         None
@@ -94,7 +94,7 @@ fn cl_05_the_oplog_lives_in_state_and_can_be_turned_off() {
     for bad in ["yes", "", "true"] {
         assert!(
             matches!(
-                env(&[("HOME", "/h"), ("MOLT_NO_OPLOG", bad)]),
+                env(&[("HOME", "/h"), ("ONYX_NO_OPLOG", bad)]),
                 Err(StartupError::BadNoOplog(_))
             ),
             "{bad:?}"
@@ -138,19 +138,19 @@ fn cl_07_root_is_refused_before_anything_else() {
 struct Home {
     _dir: TempDir,
     home: String,
-    molt_config: PathBuf,
+    onyx_config: PathBuf,
 }
 
 impl Home {
     fn new() -> Self {
         let dir = TempDir::new().unwrap();
         let home = dir.path().to_str().unwrap().to_owned();
-        let molt_config = dir.path().join(".config/molt");
-        fs::create_dir_all(molt_config.join("rules")).unwrap();
+        let onyx_config = dir.path().join(".config/onyx");
+        fs::create_dir_all(onyx_config.join("rules")).unwrap();
         Self {
             _dir: dir,
             home,
-            molt_config,
+            onyx_config,
         }
     }
 
@@ -165,7 +165,7 @@ impl Home {
 fn cl_08_startup_loads_config_and_rules_and_decides() {
     let home = Home::new();
     fs::write(
-        home.molt_config.join("config.toml"),
+        home.onyx_config.join("config.toml"),
         "dry_run = true\ndisabled_rules = [\"thumbnails\"]\n",
     )
     .unwrap();
@@ -186,7 +186,7 @@ fn cl_08_startup_loads_config_and_rules_and_decides() {
 #[test]
 fn cl_08_bad_config_rules_or_dry_run_value_stop_startup() {
     let home = Home::new();
-    let config = home.molt_config.join("config.toml");
+    let config = home.onyx_config.join("config.toml");
 
     fs::write(&config, "colour = \"red\"").unwrap();
     assert!(matches!(home.start(&[]), Err(StartupError::Config(_))));
@@ -196,15 +196,15 @@ fn cl_08_bad_config_rules_or_dry_run_value_stop_startup() {
 
     fs::write(&config, "").unwrap();
     fs::write(
-        home.molt_config.join("rules/bad.toml"),
+        home.onyx_config.join("rules/bad.toml"),
         "[[rule]]\nid = 1\n",
     )
     .unwrap();
     assert!(matches!(home.start(&[]), Err(StartupError::Rules(_))));
 
-    fs::write(home.molt_config.join("rules/bad.toml"), "").unwrap();
+    fs::write(home.onyx_config.join("rules/bad.toml"), "").unwrap();
     assert!(matches!(
-        home.start(&[("MOLT_DRY_RUN", "yes")]),
+        home.start(&[("ONYX_DRY_RUN", "yes")]),
         Err(StartupError::Config(ConfigError::BadDryRunEnv(_)))
     ));
     assert!(home.start(&[]).is_ok());
@@ -217,7 +217,7 @@ fn cl_06_the_dry_run_notice_names_its_cause_and_how_to_act() {
     let config = dry_run_notice(Decision::DryRun(C::Config)).unwrap();
 
     assert!(
-        env.contains("MOLT_DRY_RUN") && env.contains("--live"),
+        env.contains("ONYX_DRY_RUN") && env.contains("--live"),
         "{env}"
     );
     assert!(

@@ -216,7 +216,7 @@ category = "system-user"
 kind = "regenerable"
 paths = ["$XDG_CACHE_HOME/thumbnails"]
 
-# Installers (specs/009-installer.md). Only `molt installer` uses these; to the trash.
+# Installers (specs/009-installer.md). Only `onyx installer` uses these; to the trash.
 
 [[rule]]
 id = "installer-deb"

@@ -1,4 +1,4 @@
-//! `molt purge` (specs/008-purge.md): build folders in your own projects. Finding only;
+//! `onyx purge` (specs/008-purge.md): build folders in your own projects. Finding only;
 //! the preview, consent and deletion are `clean`'s (PG-07).
 
 use std::fs;
@@ -102,7 +102,7 @@ fn has_next_config(project: &Path) -> bool {
     })
 }
 
-/// One rule per kind, with no paths and no command: molt deletes build folders itself
+/// One rule per kind, with no paths and no command: onyx deletes build folders itself
 /// through safe delete, as `cargo clean` and the like would run project code (008).
 pub fn rules() -> Vec<Rule> {
     ProjectKind::ALL
@@ -263,7 +263,7 @@ impl Finder<'_> {
             return true;
         };
         Command::new(git)
-            // No fsmonitor hook: a repository's config must not make molt run its code.
+            // No fsmonitor hook: a repository's config must not make onyx run its code.
             .args(["-c", "core.fsmonitor=false", "ls-files", "-z", "--"])
             .arg(name)
             .current_dir(project)

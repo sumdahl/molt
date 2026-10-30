@@ -1,4 +1,4 @@
-//! `molt installer` (specs/009-installer.md): downloaded installers. Matching is the
+//! `onyx installer` (specs/009-installer.md): downloaded installers. Matching is the
 //! rules engine's, and the preview, consent and deletion are `clean`'s (IN-05); this
 //! only keeps the old, regular files.
 

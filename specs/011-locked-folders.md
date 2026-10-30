@@ -5,7 +5,7 @@ Prefix: LF
 
 ## Goal
 
-Some tools leave folders behind that their owner can't read. makepkg leaves `pkg` folders with mode `d--x--x--x` in AUR build caches, which locked 33 GB of `~/.cache/yay` on the maintainer's laptop. Without help, neither molt nor `rm -rf` can remove them. molt finds these folders, shows them in every dry run and scan, and opens them up only after the user agrees, then removes them like everything else.
+Some tools leave folders behind that their owner can't read. makepkg leaves `pkg` folders with mode `d--x--x--x` in AUR build caches, which locked 33 GB of `~/.cache/yay` on the maintainer's laptop. Without help, neither onyx nor `rm -rf` can remove them. onyx finds these folders, shows them in every dry run and scan, and opens them up only after the user agrees, then removes them like everything else.
 
 ## Non-goals
 
@@ -34,7 +34,7 @@ A plan carries a **permission choice**: `keep` (the default) or `fix-owned`. Onl
 - **LF-05** `fix-owned` is only ever set from the user's explicit consent. A command that would remove candidates with locked folders first shows the folders, says what it would change (`u+rwx`) and why, and asks. The default answer is no.
   - `--yes` alone doesn't give that consent. A non-interactive run needs `--fix-permissions` as well.
   - In a dry run, `--fix-permissions` changes nothing; the report says the folders would be opened and removed.
-- **LF-06** The dry run and `molt scan` show each rule's locked folders: how many, that their contents weren't measured, and that `molt clean` will ask to open them. `--json` lists their paths.
+- **LF-06** The dry run and `onyx scan` show each rule's locked folders: how many, that their contents weren't measured, and that `onyx clean` will ask to open them. `--json` lists their paths.
 
 ## Test strategy
 

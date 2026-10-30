@@ -106,7 +106,7 @@ impl Manager {
         let args: &[&str] = match self {
             Self::Pacman => &["-Rns"],
             Self::Apt | Self::Dnf | Self::Zypper | Self::Snap => &["remove"],
-            // No `--delete-data`: molt trashes `~/.var/app/N` itself (UN-19).
+            // No `--delete-data`: onyx trashes `~/.var/app/N` itself (UN-19).
             Self::FlatpakUser => &["uninstall", "--user"],
             Self::FlatpakSystem => &["uninstall", "--system"],
         };

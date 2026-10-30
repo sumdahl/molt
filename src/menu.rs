@@ -1,4 +1,4 @@
-//! The `molt` menu (specs/019-menu.md): a full-screen list of commands. It only picks
+//! The `onyx` menu (specs/019-menu.md): a full-screen list of commands. It only picks
 //! one; the command line's own code runs it (MN-03).
 
 use std::io;
@@ -65,7 +65,7 @@ impl Entry {
             Self::Status => "the machine's health, live",
             Self::System => "pacman cache, journal, coredumps (sudo)",
             Self::Optimize => "unneeded packages and upkeep (sudo)",
-            Self::History => "what molt has removed",
+            Self::History => "what onyx has removed",
             Self::Quit => "",
         }
     }

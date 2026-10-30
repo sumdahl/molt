@@ -1,4 +1,4 @@
-//! `molt status` (specs/013-status.md): the machine's health, read from `/proc` and
+//! `onyx status` (specs/013-status.md): the machine's health, read from `/proc` and
 //! `/sys` without root. Changes nothing (ST-01).
 
 use std::collections::{HashMap, HashSet};
@@ -790,7 +790,7 @@ fn disk_line(disk: &Disk) -> String {
     );
     if share >= NEARLY_FULL {
         line.push_str(&format!(
-            "  (nearly full: try `molt analyze {}`)",
+            "  (nearly full: try `onyx analyze {}`)",
             disk.point
         ));
     }

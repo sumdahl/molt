@@ -134,7 +134,7 @@ pub struct Context {
     pub xdg_dirs: Vec<PathBuf>,
     /// Paths the user's config says to never touch (P-03, SD-03).
     pub whitelist: Vec<PathBuf>,
-    /// Where to append the operation log (P-09). `None` when disabled (`MOLT_NO_OPLOG=1`).
+    /// Where to append the operation log (P-09). `None` when disabled (`ONYX_NO_OPLOG=1`).
     pub oplog: Option<PathBuf>,
     pub euid: Uid,
 }
@@ -222,7 +222,7 @@ impl fmt::Display for PlanRefused {
 impl std::error::Error for PlanRefused {}
 
 /// The operation log for owning-tool commands (CN-12). Open it before running a command,
-/// so a log that can't be written stops molt before anything changes (SD-15).
+/// so a log that can't be written stops onyx before anything changes (SD-15).
 pub struct CommandLog(Option<oplog::OpLog>);
 
 impl CommandLog {

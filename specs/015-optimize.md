@@ -1,15 +1,15 @@
-# 015: `molt optimize`
+# 015: `onyx optimize`
 
 Status: Implemented
 Prefix: OP
 
 ## Goal
 
-`molt optimize` does safe system upkeep through each tool's own command, the way `molt system` (007) frees space: it shows everything first, asks once, and runs each command through `sudo`. It covers packages nothing needs any more (#48), maintenance tasks (#49), and read-only health checks (#50).
+`onyx optimize` does safe system upkeep through each tool's own command, the way `onyx system` (007) frees space: it shows everything first, asks once, and runs each command through `sudo`. It covers packages nothing needs any more (#48), maintenance tasks (#49), and read-only health checks (#50).
 
 ## Non-goals
 
-- Deciding what's an orphan. The package manager decides; molt shows its answer and passes it back.
+- Deciding what's an orphan. The package manager decides; onyx shows its answer and passes it back.
 - Removing anything the preview didn't name (P-14).
 - Flatpak's unused runtimes, for now. `flatpak uninstall --unused` has no read-only way to list what it would remove, so it can't be previewed (P-14). It comes back when one is verified.
 - Running as root (CL-07).
@@ -56,29 +56,29 @@ Prefix: OP
 
 ## Requirements
 
-- **OP-01** `molt optimize` lists every active task. `--only <id>…` and `--skip <id>…` narrow the list; an unknown id is a usage error (exit 2), as SY-01.
+- **OP-01** `onyx optimize` lists every active task. `--only <id>…` and `--skip <id>…` narrow the list; an unknown id is a usage error (exit 2), as SY-01.
 - **OP-02** A task whose tools aren't found on an absolute `$PATH` entry is inactive and reported as such (SY-02), and so is every task that needs `sudo` when `sudo` isn't found.
 - **OP-03** Every run shows the preview first (P-14): each task, the packages its query listed (or "nothing to remove"), and the exact live command with the absolute `sudo` and tool paths. Queries run as SY-04 does: no `sudo`, no shell, stdin closed, `$PATH` limited to its absolute entries.
 - **OP-04** A package name is used only if it's one plain name (UN-08's check: no leading `-`, no spaces or shell characters). If any listed name fails it, the task is left out and says so.
 - **OP-05** A task whose query lists nothing, or fails, runs nothing. A failed query is reported with its exit status.
-- **OP-06** The live command names exactly the packages the preview listed (for apt, apt's own list). It runs as `sudo -- <tool path> <args>` (SY-07) without `--noconfirm` or `-y`, so the manager shows what it will remove and asks again. `--yes` skips only molt's question.
-- **OP-07** A dry run (`--dry-run`, the config, or `MOLT_DRY_RUN`) stops after the preview and never runs `sudo` (SY-05). Without a terminal, a live run needs `--yes`, as SY-06.
-- **OP-08** Tasks run in the table's order; one failing doesn't stop the next (SY-08). The result lists each command and its exit status. The exit code is 0 when all succeeded, 3 otherwise (P-13). Every command is in the operation log (SY-11). `--json` prints the preview and the result as `molt system` does.
+- **OP-06** The live command names exactly the packages the preview listed (for apt, apt's own list). It runs as `sudo -- <tool path> <args>` (SY-07) without `--noconfirm` or `-y`, so the manager shows what it will remove and asks again. `--yes` skips only onyx's question.
+- **OP-07** A dry run (`--dry-run`, the config, or `ONYX_DRY_RUN`) stops after the preview and never runs `sudo` (SY-05). Without a terminal, a live run needs `--yes`, as SY-06.
+- **OP-08** Tasks run in the table's order; one failing doesn't stop the next (SY-08). The result lists each command and its exit status. The exit code is 0 when all succeeded, 3 otherwise (P-13). Every command is in the operation log (SY-11). `--json` prints the preview and the result as `onyx system` does.
 
 ### Maintenance (#49)
 - **OP-09** The maintenance tasks come after the package tasks, in the table's order, with the same `--only`, `--skip`, question, dry run, log, result and exit codes (OP-01, OP-07, OP-08).
 - **OP-10** The preview shows each one's name, what it does in one line, its preview's line if it has one, and the exact live command with absolute paths (P-14). A dry run runs only the preview commands.
 - **OP-11** `font-cache` runs as you, never through `sudo`, and is active without `sudo` (P-04).
 - **OP-12** `dns-cache` is active only when `resolvectl statistics` succeeds, as that means systemd-resolved is running; otherwise it's shown as left out with the reason. Its preview line is the "Current Cache Size" line.
-- **OP-13** No maintenance command gets `--force` or `-f`, and none takes a path from molt: `fstrim --all` chooses its own filesystems.
+- **OP-13** No maintenance command gets `--force` or `-f`, and none takes a path from onyx: `fstrim --all` chooses its own filesystems.
 - **OP-14** The live commands run after the package removals; a failing one doesn't stop the rest (OP-08).
 
 ### Health (#50)
 - **OP-15** The checks come last. They only read: no `sudo`, no live command, nothing in the question or the log. They show in every run, dry or live, and `--only`/`--skip` pick them by id. A run with only checks asks nothing.
 - **OP-16** `failed-units` lists each failed unit's name from both queries, marked "(user)" for the user's own, and ends with `systemctl status <unit>` and `journalctl -b -u <unit>` as where to look. With none it says "no failed units". A query that fails is reported, and the other still runs.
 - **OP-17** `smart` checks each whole disk in `/sys/block` except virtual ones (`loop`, `ram`, `zram`, `dm-`, `md`, `sr`, `fd`, `nbd`), whose names are only ASCII letters and digits. It runs `smartctl -H /dev/<disk>` once per disk, with no other arguments.
-- **OP-18** A disk's line is "passed" when smartctl says `PASSED` or `OK`, "FAILING" when it says `FAILED` or its exit status has bit 3 (disk failing) set, "needs root" when it couldn't open the device (bit 1) with the exact `sudo smartctl -H /dev/<disk>` to run yourself, and otherwise "no SMART data". molt never runs smartctl through `sudo`.
-- **OP-19** A failed unit or a failing disk is reported, not fixed. The exit code is unchanged by what the checks find (P-13 counts what molt did, not the machine's state).
+- **OP-18** A disk's line is "passed" when smartctl says `PASSED` or `OK`, "FAILING" when it says `FAILED` or its exit status has bit 3 (disk failing) set, "needs root" when it couldn't open the device (bit 1) with the exact `sudo smartctl -H /dev/<disk>` to run yourself, and otherwise "no SMART data". onyx never runs smartctl through `sudo`.
+- **OP-19** A failed unit or a failing disk is reported, not fixed. The exit code is unchanged by what the checks find (P-13 counts what onyx did, not the machine's state).
 - **OP-20** `--json` puts each check's findings in its task's `found` as a list of lines.
 
 ## Test strategy
@@ -94,8 +94,8 @@ Prefix: OP
 
 ## Decisions
 
-- **A new command, not a `molt system` task.** `system` frees space and measures it; optimize's tasks are upkeep, and #49 and #50 add tasks that free nothing.
+- **A new command, not a `onyx system` task.** `system` frees space and measures it; optimize's tasks are upkeep, and #49 and #50 add tasks that free nothing.
 - **Names passed explicitly** where the manager takes them, so the live run can't remove more top-level packages than the preview showed, even if the system changed in between.
-- **Two yeses**, as `molt uninstall`: molt's, then the manager's. The maintenance tools don't ask again; molt's question is the only one, which is fine as none of them removes a file.
-- **Checks never use sudo.** A read-only check that prompts for a password would make the dry run less than dry. molt names the command to run yourself instead.
-- **No fstrim preview.** molt could list discard-capable filesystems itself, but `fstrim --all` decides on its own, and a list that might differ from what runs would be worse than none.
+- **Two yeses**, as `onyx uninstall`: onyx's, then the manager's. The maintenance tools don't ask again; onyx's question is the only one, which is fine as none of them removes a file.
+- **Checks never use sudo.** A read-only check that prompts for a password would make the dry run less than dry. onyx names the command to run yourself instead.
+- **No fstrim preview.** onyx could list discard-capable filesystems itself, but `fstrim --all` decides on its own, and a list that might differ from what runs would be worse than none.
