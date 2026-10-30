@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use clap::{CommandFactory, Parser};
 
 /// Reclaim disk space on Linux, safely.

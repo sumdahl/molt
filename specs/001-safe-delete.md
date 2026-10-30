@@ -19,15 +19,15 @@ A scan produces **candidates**. Each candidate holds the path plus the identity 
 ## Requirements
 
 ### Refusals
-- **SD-01** Given a candidate that is `/`, `$HOME`, an XDG base directory itself, or a top-level system directory (`/usr`, `/etc`, `/boot`, `/var`, `/home`…), when the plan runs, then it is refused with reason `protected`.
-- **SD-02** Given a candidate inside a protected user location (`~/.ssh`, `~/.gnupg`, `~/.password-store`, `~/.local/share/keyrings`, `~/.mozilla/firefox/*/key4.db`…), then it is refused with reason `protected`.
+- **SD-01** Given a candidate that is `/`, `$HOME`, an XDG base directory itself, a top-level system directory (`/usr`, `/etc`, `/boot`, `/var`, `/home`…), or any directory above one of these, when the plan runs, then it is refused with reason `protected`.
+- **SD-02** Given a candidate inside a protected user location (`~/.ssh`, `~/.gnupg`, `~/.password-store`, `~/.local/share/keyrings`, a Firefox profile directory, or `key4.db`/`logins.json` inside one), or a directory above one of these, then it is refused with reason `protected`.
 - **SD-03** Given a whitelisted path (P-03 config), then that path, everything inside it, and every directory above it are refused with reason `whitelisted`.
 - **SD-04** Given a relative path, a path containing `..`, or a path that isn't valid UTF-8 after normalisation, then it is refused with reason `invalid-path`.
 
 ### Symlinks and mounts
 - **SD-05** Given a candidate that is a symlink, then only the link itself is removed. The link's target is never read, followed, or removed.
 - **SD-06** Given a directory candidate containing symlinks, then the links inside are removed as links, and nothing outside the candidate is touched.
-- **SD-07** Given a directory candidate containing a mount point (a child whose `st_dev` differs from the candidate's), then nothing is deleted under that mount, the mount point directory is kept, and the outcome is `partial`. There is no flag to cross mounts.
+- **SD-07** Given a directory candidate containing a mount point (a child whose `st_dev` differs from the candidate's), then nothing is deleted under that mount, the mount point directory is kept, and the outcome is `partial`. A candidate that is itself a mount point (its `st_dev` differs from its parent's) is skipped with reason `mount-point`. There is no flag to cross mounts.
 
 ### Races (TOCTOU)
 - **SD-08** Given a candidate whose `(st_dev, st_ino, file type)` at execution differs from the scan, then it is skipped with reason `changed-since-scan`.
