@@ -9,14 +9,17 @@ use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use onyx::analyze;
 use onyx::clean::{self, Busy};
 use onyx::completions::{self, Shell};
-use onyx::config::{Decision, Requested};
+use onyx::config::{Confirm, Decision, Requested};
+use onyx::fingerprint::{self, Verified};
 use onyx::install;
 use onyx::installer;
 use onyx::optimize;
 use onyx::processes;
 use onyx::purge;
 use onyx::rules::{Rule, RuleId};
-use onyx::safe_delete::{self, Candidate, Execution, Mode, Permissions, Plan, Privilege};
+use onyx::safe_delete::{
+    self, Candidate, CommandLog, Confirmed, Execution, Mode, Permissions, Plan, Privilege,
+};
 use onyx::scan::{self, Survey};
 use onyx::startup::{self, Startup};
 use onyx::system;
@@ -470,12 +473,12 @@ fn run_uninstall(
         return Ok(ExitCode::SUCCESS);
     }
     // UN-11: one question for both.
-    if !go_ahead(cli, "Remove all of the above?")? {
+    if !go_ahead(cli, startup, "Remove all of the above?")? {
         return Ok(ExitCode::SUCCESS);
     }
     if let Some(removal) = &removal {
         // SY-11: fail closed before the command.
-        let mut log = onyx::safe_delete::CommandLog::open(&startup.env.context(&startup.config))?;
+        let mut log = CommandLog::open(&startup.env.context(&startup.config))?;
         let run = package::remove(removal, search_path, &mut log)?;
         if cli.json {
             println!("{}", serde_json::json!({ "package": run }));
@@ -554,7 +557,7 @@ fn ask_and_act(
         return Ok(ExitCode::SUCCESS);
     }
     // CN-05
-    if !go_ahead(cli, "Clean all of the above?")? {
+    if !go_ahead(cli, startup, "Clean all of the above?")? {
         return Ok(ExitCode::SUCCESS);
     }
     act_on(cli, startup, preview, rules, fix_permissions)
@@ -692,11 +695,11 @@ fn run_system(
         return Ok(ExitCode::SUCCESS);
     };
     // SY-06
-    if !go_ahead(cli, "Run all of the above with sudo?")? {
+    if !go_ahead(cli, startup, "Run all of the above with sudo?")? {
         return Ok(ExitCode::SUCCESS);
     }
     // SY-11: fail closed before the first command.
-    let mut log = onyx::safe_delete::CommandLog::open(&startup.env.context(&startup.config))?;
+    let mut log = CommandLog::open(&startup.env.context(&startup.config))?;
     let result = system::act(sudo, &selected, root, search_path, &mut log)?;
     if cli.json {
         println!("{}", serde_json::json!({ "result": result }));
@@ -777,11 +780,11 @@ fn update_from(
         "  would replace {} (the old one goes to the trash)\n",
         binary.display()
     );
-    if stop_for_dry_run(startup) || !go_ahead(cli, "Replace onyx?")? {
+    if stop_for_dry_run(startup) || !go_ahead(cli, startup, "Replace onyx?")? {
         return Ok(ExitCode::SUCCESS);
     }
     // SY-11: fail closed before the swap.
-    let mut log = onyx::safe_delete::CommandLog::open(ctx)?;
+    let mut log = CommandLog::open(ctx)?;
     let old = safe_delete::swap_in(binary, new, ctx.euid).map_err(|errno| {
         format!("couldn't put the new onyx in place ({errno}); nothing changed")
     })?;
@@ -831,7 +834,10 @@ fn run_remove(
     if !args.with_log {
         println!("The operation log stays (--with-log removes it).");
     }
-    if preview.results.is_empty() || stop_for_dry_run(startup) || !go_ahead(cli, "Remove onyx?")? {
+    if preview.results.is_empty()
+        || stop_for_dry_run(startup)
+        || !go_ahead(cli, startup, "Remove onyx?")?
+    {
         return Ok(ExitCode::SUCCESS);
     }
     let report = safe_delete::execute(&self_plan(&paths, mode, Execution::Live), &ctx)?;
@@ -951,11 +957,11 @@ fn run_optimize(
     if stop_for_dry_run(startup) || !preview.has_work() {
         return Ok(ExitCode::SUCCESS);
     }
-    if !go_ahead(cli, "Run all of the above with sudo?")? {
+    if !go_ahead(cli, startup, "Run all of the above with sudo?")? {
         return Ok(ExitCode::SUCCESS);
     }
     // SY-11: fail closed before the first command.
-    let mut log = onyx::safe_delete::CommandLog::open(&startup.env.context(&startup.config))?;
+    let mut log = CommandLog::open(&startup.env.context(&startup.config))?;
     let result = optimize::act(&preview, search_path, &mut log)?;
     if cli.json {
         println!("{}", serde_json::json!({ "result": result }));
@@ -977,20 +983,46 @@ fn stop_for_dry_run(startup: &Startup) -> bool {
 }
 
 /// CN-05, SY-06: `--yes`, or a yes on the terminal. With neither, nothing changes.
-fn go_ahead(cli: &Cli, question: &str) -> Result<bool, Box<dyn std::error::Error>> {
-    if cli.yes {
-        return Ok(true);
-    }
-    if !std::io::stdin().is_terminal() {
+fn go_ahead(
+    cli: &Cli,
+    startup: &Startup,
+    question: &str,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let how = if cli.yes {
+        Confirmed::YesFlag
+    } else if !std::io::stdin().is_terminal() {
         return Err(
             "no terminal to ask for confirmation; pass --yes to go ahead. Nothing changed".into(),
         );
+    } else {
+        match ask(startup, question)? {
+            Some(how) => how,
+            None => {
+                println!("Nothing changed.");
+                return Ok(false);
+            }
+        }
+    };
+    // FP-06: before anything changes; a failed write stops the run (SD-15).
+    let ctx = startup.env.context(&startup.config);
+    CommandLog::open(&ctx)?
+        .confirmed(how, question)
+        .map_err(|error| format!("can't write the operation log: {error}. Nothing changed"))?;
+    Ok(true)
+}
+
+/// FP-03, FP-04: the fingerprint when the config asks for it, else (or when it isn't
+/// confirmed) the typed question. `None` is no.
+fn ask(startup: &Startup, question: &str) -> std::io::Result<Option<Confirmed>> {
+    if startup.config.confirm == Confirm::Fingerprint {
+        eprintln!("{question}");
+        eprintln!("Touch the fingerprint sensor to go ahead, or press Ctrl-C to stop.");
+        match fingerprint::verify(&startup.env.search_path) {
+            Verified::Matched => return Ok(Some(Confirmed::Fingerprint)),
+            other => eprintln!("{other}; answer here instead."),
+        }
     }
-    let yes = confirm(question)?;
-    if !yes {
-        println!("Nothing changed.");
-    }
-    Ok(yes)
+    Ok(confirm(question)?.then_some(Confirmed::Typed))
 }
 
 /// P-14, CN-04: printed in full before anything changes, `--json` included.

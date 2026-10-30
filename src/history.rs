@@ -124,6 +124,12 @@ pub struct History {
     skipped_lines: usize,
 }
 
+/// FP-06: a confirmation changed nothing, so it isn't shown, and it isn't unreadable.
+fn is_confirmation(line: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(line)
+        .is_ok_and(|raw| raw.get("confirmed").is_some() && raw.get("time").is_some())
+}
+
 fn parse(text: &str) -> History {
     let mut history = History {
         entries: Vec::new(),
@@ -132,6 +138,7 @@ fn parse(text: &str) -> History {
     for line in text.lines().filter(|line| !line.trim().is_empty()) {
         match Entry::parse(line) {
             Some(entry) => history.entries.push(entry),
+            None if is_confirmation(line) => {}
             None => history.skipped_lines += 1,
         }
     }

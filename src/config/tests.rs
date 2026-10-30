@@ -200,3 +200,23 @@ fn cf_07_a_bad_onyx_dry_run_value_is_an_error() {
         }
     }
 }
+
+#[test]
+fn fp_01_confirm_is_type_or_fingerprint() {
+    assert_eq!(parse("").unwrap().confirm, Confirm::Type);
+    assert_eq!(parse("confirm = \"type\"").unwrap().confirm, Confirm::Type);
+    assert_eq!(
+        parse("confirm = \"fingerprint\"").unwrap().confirm,
+        Confirm::Fingerprint
+    );
+    for bad in [
+        "confirm = \"face\"",
+        "confirm = true",
+        "confirm = \"Fingerprint\"",
+    ] {
+        assert!(
+            matches!(parse(bad), Err(ConfigError::Parse { .. })),
+            "{bad}"
+        );
+    }
+}

@@ -84,3 +84,15 @@ fn hi_03_hi_04_hi_05_newest_first_limited_since_and_totalled() {
     let since: Timestamp = "2026-10-30T08:30:00Z".parse().unwrap();
     assert_eq!(h.select(Some(since), None).entries.len(), 2);
 }
+
+#[test]
+fn fp_06_confirmations_are_neither_shown_nor_unreadable() {
+    let history = parse(concat!(
+        r#"{"time":"2026-10-31T10:00:00Z","confirmed":"fingerprint","question":"Clean all of the above?"}"#,
+        "\n",
+        r#"{"time":"2026-10-31T10:00:01Z","mode":"trash","path":"/h/a","bytes":5,"outcome":"trashed"}"#,
+        "\n",
+    ));
+    assert_eq!(history.entries.len(), 1);
+    assert_eq!(history.skipped_lines, 0);
+}

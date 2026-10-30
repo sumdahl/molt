@@ -37,6 +37,22 @@ struct CommandEntry<'a> {
     bytes: u64,
 }
 
+/// FP-06: how a live run was agreed to, written before it changes anything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Confirmed {
+    Typed,
+    Fingerprint,
+    YesFlag,
+}
+
+#[derive(Serialize)]
+struct ConfirmEntry<'a> {
+    time: String,
+    confirmed: Confirmed,
+    question: &'a str,
+}
+
 fn is_zero(n: &u32) -> bool {
     *n == 0
 }
@@ -96,6 +112,18 @@ impl OpLog {
             command,
             exit,
             bytes,
+        })
+    }
+
+    pub(super) fn record_confirmation(
+        &mut self,
+        confirmed: Confirmed,
+        question: &str,
+    ) -> io::Result<()> {
+        self.append(&ConfirmEntry {
+            time: jiff::Timestamp::now().to_string(),
+            confirmed,
+            question,
         })
     }
 

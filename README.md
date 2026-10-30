@@ -118,10 +118,6 @@ Run `onyx` on its own in a terminal for a menu of every command, under the banne
 
 `onyx remove` moves onyx's binary, config, cache, state and completion files to the trash (`--permanent` deletes them). The operation log stays unless you add `--with-log`. Both show the full preview first and ask.
 
-### Planned
-
-Optional fingerprint confirmation, and AUR, `.deb` and `cargo install` packages. See the Phase 5 milestone on GitHub.
-
 ## Options and configuration
 
 These work with every command:
@@ -140,7 +136,10 @@ dry_run = true                        # preview only, unless --live
 whitelist = ["~/work/keep-this", "/data/vms"]   # never touched, nor anything inside
 disabled_rules = ["thumbnails"]       # built-in rules to switch off
 purge_paths = ["~/projects"]          # where `onyx purge` looks
+confirm = "fingerprint"               # or "type" (the default); see below
 ```
+
+With `confirm = "fingerprint"`, a live run's question can be answered by touching the fingerprint sensor (through fprintd's `fprintd-verify`) instead of typing `y`. The full preview still comes first. If there's no reader, no enrolled finger or no match, onyx asks you to type the answer instead, default no. It's a convenience, not a lock: typing `y` always works. Ctrl-C stops with nothing changed. Each yes is logged with how it was given (typed, fingerprint, or `--yes`).
 
 If the config or a rule file in `~/.config/onyx/rules/` can't be read exactly, onyx stops without doing anything.
 
