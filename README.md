@@ -54,9 +54,9 @@ molt installer --dry-run           # what would go
 molt installer --permanent         # delete instead of trashing
 ```
 
-`molt uninstall <app>` removes what an app left in your home: its folder in `~/.config`, `~/.local/share`, `~/.local/state` and `~/.cache`, its `~/.<app>` dot-folder, and its menu and autostart entries. The name must match the folder exactly (`Code`, not `code`), and names of shared folders like `applications` or `Trash` are refused. Nothing is touched while the app is running. The cache is deleted; everything else goes to the trash.
+`molt uninstall <app>` removes what an app left in your home: its folder in `~/.config`, `~/.local/share`, `~/.local/state` and `~/.cache`, its `~/.<app>` dot-folder, its menu and autostart entries, a flatpak's `~/.var/app/<id>`, a snap's `~/snap/<name>`, and an `<app>.AppImage` in `~/Applications` or `~/.local/bin` with its icons. The name must match the folder exactly (`Code`, not `code`), and names of shared folders like `applications` or `Trash` are refused. Nothing is touched while the app is running. The cache is deleted; everything else goes to the trash.
 
-If pacman, apt, dnf or zypper has a package named exactly `<app>`, or one that owns the `<app>` program on `$PATH`, the preview shows it with everything its manager would remove, and the exact `sudo -- pacman -Rns <pkg>` (or `apt-get remove`, `dnf remove`, `zypper remove`) it would run. After your yes the package goes first, and the manager still asks its own question. If that fails or you say no, the leftovers are kept. A dry run never runs `sudo`.
+If pacman, apt, dnf, zypper, flatpak (by app id) or snap has a package named exactly `<app>`, or one that owns the `<app>` program on `$PATH`, the preview shows it with everything its manager would remove, and the exact `sudo -- pacman -Rns <pkg>` (or `apt-get remove`, `dnf remove`, `zypper remove`) it would run. After your yes the package goes first, and the manager still asks its own question. If that fails or you say no, the leftovers are kept. A flatpak installed for you is removed without `sudo`. A dry run never runs `sudo`.
 
 ```sh
 molt uninstall chromium --dry-run  # what it left, and where
@@ -89,7 +89,6 @@ molt system --only journal         # just one task
 
 | Command | What it does |
 |---|---|
-| `molt uninstall` (more) | Flatpak, snap and AppImage apps |
 | `molt optimize` | Safe maintenance: orphan packages, TRIM, font cache, failed units |
 | `molt history` | Show what molt has removed |
 

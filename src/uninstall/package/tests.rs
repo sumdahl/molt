@@ -44,6 +44,7 @@ fn un_08_dpkg_names_the_owner_before_the_colon() {
 fn un_11_the_removal_never_skips_the_managers_own_question() {
     for manager in Manager::ALL {
         let run = manager.removal(Path::new("/usr/bin/tool"), "foo");
+        // UN-18: snap has no question of its own; snapd keeps a snapshot instead.
         assert!(
             run.args
                 .iter()

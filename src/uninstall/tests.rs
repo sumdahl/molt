@@ -54,7 +54,10 @@ fn un_02_un_05_one_rule_per_location_with_its_kind() {
     let rules = rules(&AppName::try_from("foo").unwrap()).unwrap();
     let got: Vec<(String, String, Kind)> = rules
         .iter()
-        .map(|rule| (rule.id.to_string(), rule.paths[0].to_string(), rule.kind))
+        .map(|rule| {
+            let paths: Vec<String> = rule.paths.iter().map(ToString::to_string).collect();
+            (rule.id.to_string(), paths.join(" "), rule.kind)
+        })
         .collect();
     let want = [
         (
@@ -76,6 +79,26 @@ fn un_02_un_05_one_rule_per_location_with_its_kind() {
             "$XDG_CONFIG_HOME/autostart/foo.desktop",
             Kind::UserContent,
         ),
+        // UN-19
+        (
+            "uninstall-flatpak-data",
+            "~/.var/app/foo",
+            Kind::UserContent,
+        ),
+        ("uninstall-snap-data", "~/snap/foo", Kind::UserContent),
+        // UN-20
+        (
+            "uninstall-appimage",
+            "~/Applications/foo.AppImage ~/Applications/foo.appimage \
+             ~/.local/bin/foo.AppImage ~/.local/bin/foo.appimage",
+            Kind::UserContent,
+        ),
+        (
+            "uninstall-icon",
+            "$XDG_DATA_HOME/icons/hicolor/*/apps/foo.png \
+             $XDG_DATA_HOME/icons/hicolor/*/apps/foo.svg",
+            Kind::UserContent,
+        ),
     ];
     let want: Vec<_> = want
         .iter()
@@ -84,7 +107,6 @@ fn un_02_un_05_one_rule_per_location_with_its_kind() {
     assert_eq!(got, want);
     // P-08
     assert!(rules.iter().all(|rule| rule.processes == ["foo"]));
-    assert!(rules.iter().all(|rule| rule.paths.len() == 1));
     // RuleId::builtin's ids must satisfy RE-03.
     assert!(
         rules
