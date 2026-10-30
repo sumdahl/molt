@@ -7,6 +7,7 @@ use std::time::SystemTime;
 use clap::{Args, Parser, Subcommand};
 use molt::clean::{self, Busy};
 use molt::config::{Decision, Requested};
+use molt::installer;
 use molt::processes;
 use molt::purge;
 use molt::rules::{Rule, RuleId};
@@ -44,6 +45,9 @@ enum Command {
     /// Remove build folders (target, node_modules, .venv…) of projects under purge_paths:
     /// preview first, then ask.
     Purge(PurgeArgs),
+    /// Move old installers (.deb, .rpm, .AppImage, .iso…) in Downloads and Desktop to the
+    /// trash: preview first, then ask.
+    Installer(InstallerArgs),
     /// Free system space (pacman cache, journal, coredumps) through each tool's own
     /// command, run with sudo: preview first, then ask.
     System(SystemArgs),
@@ -60,6 +64,19 @@ struct PurgeArgs {
     /// Move to the trash instead of deleting.
     #[arg(long)]
     trash: bool,
+}
+
+#[derive(Clone, Args)]
+struct InstallerArgs {
+    /// Only these rules (ids as in `molt installer --json`).
+    #[arg(long, num_args = 1.., value_name = "ID")]
+    only: Vec<String>,
+    /// Leave these rules out.
+    #[arg(long, num_args = 1.., value_name = "ID")]
+    skip: Vec<String>,
+    /// Delete permanently instead of moving to the trash.
+    #[arg(long)]
+    permanent: bool,
 }
 
 #[derive(Clone, Args)]
@@ -138,6 +155,7 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         None | Some(Command::Scan) => run_scan(cli, &startup),
         Some(Command::Clean(args)) => run_clean(cli, args, &startup),
         Some(Command::Purge(args)) => run_purge(cli, args, &startup),
+        Some(Command::Installer(args)) => run_installer(cli, args, &startup),
         Some(Command::System(args)) => run_system(cli, args, &startup),
     }
 }
@@ -204,25 +222,61 @@ fn run_purge(
     preview.report.freed_by = "molt purge";
     print_preview(cli, &preview, &[])?;
     if !cli.json {
-        print_left_out(&preview);
+        print_left_out(
+            &preview,
+            "build folders",
+            &[
+                ("recently-changed", "changed in the last 7 days"),
+                ("git-tracked", "may hold Git-tracked files"),
+            ],
+        );
     }
     ask_and_act(cli, startup, &preview, &kinds, false)
 }
 
-/// PG-04, PG-05: how many projects the preview left out, and why.
-fn print_left_out(preview: &Survey) {
-    for (reason, why) in [
-        ("changed-in-the-last-7-days", "changed in the last 7 days"),
-        ("git-tracked", "may hold Git-tracked files"),
-    ] {
+/// IN-01..IN-05: old installers in Downloads and Desktop, then on as `clean` does.
+fn run_installer(
+    cli: &Cli,
+    args: &InstallerArgs,
+    startup: &Startup,
+) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let rules = match clean::select(&startup.installers, &args.only, &args.skip) {
+        Ok(rules) => rules,
+        Err(unknown) => {
+            eprintln!("molt: no installer rule has the id `{unknown}`; nothing changed");
+            return Ok(ExitCode::from(2));
+        }
+    };
+    let env = &startup.env;
+    let mut findings = molt::rules::find(&rules, &env.dirs, &env.search_path);
+    installer::keep_old_files(&mut findings, SystemTime::now());
+    // IN-04
+    let mode = args.permanent.then_some(Mode::Permanent);
+    let mut preview = scan::measure_findings(&rules, findings, startup, mode)?;
+    preview.report.freed_by = "molt installer";
+    print_preview(cli, &preview, &[])?;
+    if !cli.json {
+        print_left_out(
+            &preview,
+            "installers",
+            &[("recently-changed", "changed in the last 14 days")],
+        );
+    }
+    ask_and_act(cli, startup, &preview, &rules, false)
+}
+
+/// PG-04, PG-05, IN-03: how many items the preview left out, and why. `reasons` pairs a
+/// skip reason with what to say about it.
+fn print_left_out(preview: &Survey, what: &str, reasons: &[(&str, &str)]) {
+    for (reason, why) in reasons {
         let count = preview
             .report
             .skipped
             .iter()
-            .filter(|skip| skip.reason == reason)
+            .filter(|skip| skip.reason == *reason)
             .count();
         if count > 0 {
-            println!("Left out {count} build folders: {why}. See --json.");
+            println!("Left out {count} {what}: {why}. See --json.");
         }
     }
 }

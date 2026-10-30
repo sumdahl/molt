@@ -1,6 +1,6 @@
 # 009: `molt installer`
 
-Status: Accepted
+Status: Implemented
 Prefix: IN
 
 ## Goal

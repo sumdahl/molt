@@ -215,3 +215,53 @@ name = "Thumbnail cache"
 category = "system-user"
 kind = "regenerable"
 paths = ["$XDG_CACHE_HOME/thumbnails"]
+
+# Installers (specs/009-installer.md). Only `molt installer` uses these; to the trash.
+
+[[rule]]
+id = "installer-deb"
+name = "Debian packages (.deb)"
+category = "installers"
+kind = "user-content"
+paths = ["~/Downloads/*.deb", "~/Desktop/*.deb"]
+
+[[rule]]
+id = "installer-rpm"
+name = "RPM packages (.rpm)"
+category = "installers"
+kind = "user-content"
+paths = ["~/Downloads/*.rpm", "~/Desktop/*.rpm"]
+
+[[rule]]
+id = "installer-pacman"
+name = "pacman packages (.pkg.tar.*)"
+category = "installers"
+kind = "user-content"
+paths = [
+    "~/Downloads/*.pkg.tar.zst", "~/Downloads/*.pkg.tar.xz",
+    "~/Desktop/*.pkg.tar.zst", "~/Desktop/*.pkg.tar.xz",
+]
+
+[[rule]]
+id = "installer-appimage"
+name = "AppImages"
+category = "installers"
+kind = "user-content"
+paths = [
+    "~/Downloads/*.AppImage", "~/Downloads/*.appimage",
+    "~/Desktop/*.AppImage", "~/Desktop/*.appimage",
+]
+
+[[rule]]
+id = "installer-iso"
+name = "ISO images (.iso)"
+category = "installers"
+kind = "user-content"
+paths = ["~/Downloads/*.iso", "~/Desktop/*.iso"]
+
+[[rule]]
+id = "installer-run"
+name = "Self-extracting installers (.run)"
+category = "installers"
+kind = "user-content"
+paths = ["~/Downloads/*.run", "~/Desktop/*.run"]

@@ -6,7 +6,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 use crate::config::{self, Config, ConfigError, Decision, DryRunCause, Requested};
-use crate::rules::{self, Dirs, LoadError, Rule};
+use crate::rules::{self, Category, Dirs, LoadError, Rule};
 use crate::safe_delete::{Context, Uid};
 
 #[cfg(test)]
@@ -30,7 +30,10 @@ pub struct Environment {
 pub struct Startup {
     pub env: Environment,
     pub config: Config,
+    /// The rules `scan` and `clean` use.
     pub rules: Vec<Rule>,
+    /// IN-01: the `installers` rules, which only `molt installer` uses.
+    pub installers: Vec<Rule>,
     pub decision: Decision,
 }
 
@@ -113,12 +116,16 @@ pub fn start(
     let env = environment(var, euid)?;
     let molt_config = env.dirs.config.join("molt");
     let config = config::load(&molt_config.join("config.toml"))?;
-    let rules = config.enabled_rules(rules::load(&molt_config.join("rules"))?)?;
+    let (installers, rules) = config
+        .enabled_rules(rules::load(&molt_config.join("rules"))?)?
+        .into_iter()
+        .partition(|rule| rule.category == Category::Installers);
     let decision = config.decide(requested, env.dry_run.as_deref())?;
     Ok(Startup {
         env,
         config,
         rules,
+        installers,
         decision,
     })
 }

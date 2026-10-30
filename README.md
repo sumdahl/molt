@@ -4,7 +4,7 @@ Reclaim disk space on Linux, safely.
 
 molt finds what is filling your disk (caches, build artifacts, old packages, installers, leftovers from removed apps), shows you exactly what it would remove, and removes only what it can prove is safe to remove. It works on any Linux distribution, with extra rules for pacman, apt, dnf, zypper, flatpak and snap.
 
-> **Status: pre-release.** `molt scan`, `molt clean`, `molt purge` and `molt system` work. Other commands are being built spec-first.
+> **Status: pre-release.** `molt scan`, `molt clean`, `molt purge`, `molt installer` and `molt system` work. Other commands are being built spec-first.
 
 ## Commands
 
@@ -47,6 +47,13 @@ molt purge --only cargo node       # just these kinds
 molt purge --trash                 # to the trash instead
 ```
 
+`molt installer` moves old installers (`.deb`, `.rpm`, `.pkg.tar.zst`, `.AppImage`, `.iso`, `.run`) from `~/Downloads` and `~/Desktop` to the trash, so you can get them back. Files from the last 14 days, folders and symlinks are left alone. `clean` never touches them.
+
+```sh
+molt installer --dry-run           # what would go
+molt installer --permanent         # delete instead of trashing
+```
+
 `molt system` frees space outside your home through each tool's own command, run with `sudo`: the pacman cache (`paccache -rk2` and `-ruk0`), the systemd journal (`journalctl --vacuum-size=500M`) and coredumps past the system's own age limit (`systemd-tmpfiles --clean`). molt itself never runs as root. The preview uses each tool's read-only mode without `sudo`, so `molt system --dry-run` never asks for a password. A task is shown only when its tools are installed.
 
 ```sh
@@ -58,7 +65,6 @@ molt system --only journal         # just one task
 
 | Command | What it does |
 |---|---|
-| `molt installer` | Find leftover `.deb` / `.rpm` / `.AppImage` / `.iso` files |
 | `molt analyze` | Interactive disk explorer |
 | `molt status` | Live system health dashboard |
 | `molt uninstall` | Remove an app and its leftovers, across package managers |
