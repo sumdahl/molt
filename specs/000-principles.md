@@ -13,7 +13,14 @@ These rules hold for every command molt has or will have. A feature spec may add
 - **P-02 Prove it's safe, or leave it.** If molt cannot show that a path is safe to remove, it skips the path and reports the reason. Unknown means no.
 - **P-03 Fail closed.** If config, whitelist, or rule files exist but can't be read or parsed, molt stops before deleting anything.
 - **P-04 No root by default.** molt runs as the invoking user. System-level actions (pacman cache, journal, coredumps) run only through an explicit step that names the privileged command and asks for confirmation. If molt is started as root without that step, it refuses to run.
-- **P-05 Preview everything.** Every mutating command supports `--dry-run`. A dry run makes no changes to the filesystem and shows the same plan a real run would carry out.
+- **P-05 Dry run everywhere.** Every command accepts `--dry-run`, a global flag, so adding it is always safe. A dry run:
+  - changes nothing anywhere. It deletes, trashes, moves and creates nothing: no trash directory, no operation-log entry, no config or state file.
+  - never runs an owning tool's cleanup command (P-07). It shows the exact command a live run would run, or runs the tool's own read-only preview if it has one (`paccache -d`).
+  - never asks for privileges. There is no `sudo` prompt (P-04).
+  - shows the same plan, sizes and exit code as a live run, with each outcome marked as what *would* happen.
+  - is accepted by read-only commands (`scan`, `analyze`, `status`) too, which behave exactly as they do without it.
+
+  Every command spec must include a requirement, with a test, that its dry run leaves a snapshot of the fake home unchanged and starts no mutating external command.
 - **P-06 Confirm before mutating.** Interactive runs show what will be removed, with sizes, and wait for confirmation. Non-interactive runs require `--yes`.
 - **P-07 Ask the owning tool first.** When a tool has its own cleanup command (`paccache`, `npm cache clean`, `docker system prune`, `journalctl --vacuum-*`, `flatpak uninstall --unused`, `uv cache clean`…), molt runs that command instead of deleting the tool's files directly.
 - **P-08 Don't clean what's in use.** A rule may name the processes that own its data. molt skips the rule while any of those processes is running.
