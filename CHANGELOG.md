@@ -8,6 +8,7 @@ The release workflow publishes the section matching the pushed tag as the GitHub
 
 ### Added
 - A `PKGBUILD` for `onyx-bin` on each release, which packages the release binary with its licence, README and shell completions. The release workflow builds and installs it in Arch before publishing. Spec: `specs/021-packaging.md`.
+- `onyx_X.Y.Z_amd64.deb` and its `.sha256` on each release: the same binary, licence, README and completions, installed and removed in Debian by the release workflow first.
 
 ### Changed
 - `onyx update` and `onyx remove` leave an onyx installed by a package manager or by `cargo install` alone, and name the package and the tool to use.

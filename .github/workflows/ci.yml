@@ -41,3 +41,7 @@ jobs:
         run: |
           packaging/aur/fill.sh "$VERSION" "onyx-v$VERSION-$TARGET.tar.gz" aur
           docker run --rm -v "$PWD/aur:/pkg" -v "$PWD/packaging/aur/check.sh:/check.sh:ro" archlinux:latest sh /check.sh
+      - name: .deb package
+        run: |
+          packaging/deb/build.sh "$VERSION" "onyx-v$VERSION-$TARGET.tar.gz" deb
+          docker run --rm -v "$PWD/deb:/pkg" -v "$PWD/packaging/deb/check.sh:/check.sh:ro" debian:stable sh /check.sh

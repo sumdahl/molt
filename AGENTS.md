@@ -83,7 +83,8 @@ Releases are cut from `main` by pushing a tag. `.github/workflows/release.yml` d
 7. The maintainer signs the checksum, so `onyx update` will install the release (specs/020-self.md):
    `gh release download vX.Y.Z -p '*.sha256'`, then
    `ssh-keygen -Y sign -f ~/.ssh/id_personal -n onyx-release onyx-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz.sha256`, then
-   `gh release upload vX.Y.Z onyx-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz.sha256.sig`.
+   `gh release upload vX.Y.Z onyx-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz.sha256.sig`,
+   and the same three steps for `onyx_X.Y.Z_amd64.deb.sha256`.
 8. Once the maintainer has an AUR account: copy the release's `onyx-bin.PKGBUILD` and `onyx-bin.SRCINFO` into the `onyx-bin` AUR repository as `PKGBUILD` and `.SRCINFO`, commit, and push.
 
 Agents prepare the release commit. A human confirms before the tag is pushed. The signing key has a passphrase, so the maintainer signs the tag (or loads the key into `ssh-agent` first).

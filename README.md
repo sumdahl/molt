@@ -187,6 +187,12 @@ makepkg -si
 
 pacman then owns onyx, so update and remove it with pacman; `onyx update` says so. The same goes for an onyx from `cargo install`, which cargo updates.
 
+On Debian or Ubuntu, each release from v0.3.0 on has `onyx_X.Y.Z_amd64.deb`, with a signed `.sha256` like the tarball's:
+
+```sh
+sudo apt install ./onyx_0.3.0_amd64.deb
+```
+
 From source:
 
 ```sh
