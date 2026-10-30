@@ -192,11 +192,7 @@ impl Walker {
         own: u64,
         depth: usize,
     ) -> Pending<'scope> {
-        let claimed = self
-            .spare
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| n.checked_sub(1))
-            .is_ok();
-        if !claimed {
+        if !self.claim_thread() {
             return Pending::Done(self.dir(scope, path, name, own, depth));
         }
         Pending::Running(scope.spawn(move || {
@@ -204,6 +200,25 @@ impl Walker {
             self.spare.fetch_add(1, Ordering::AcqRel);
             node
         }))
+    }
+}
+
+impl Walker {
+    /// Takes one spare thread, if any is left.
+    fn claim_thread(&self) -> bool {
+        let mut spare = self.spare.load(Ordering::Acquire);
+        while spare > 0 {
+            match self.spare.compare_exchange_weak(
+                spare,
+                spare - 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return true,
+                Err(now) => spare = now,
+            }
+        }
+        false
     }
 }
 
