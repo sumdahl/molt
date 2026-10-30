@@ -2334,3 +2334,54 @@ fn op_20_json_lists_each_checks_lines() {
     assert_eq!(task["id"], "failed-units", "{json}");
     assert_eq!(task["found"]["report"][0], "bad.service", "{json}");
 }
+
+/// The banner's art, as BN-01 draws it.
+const BANNER_ART: &str = "|_| |_| |_|\\___/|_|\\__|";
+
+#[test]
+fn bn_03_no_banner_when_piped_with_json_or_for_version() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    for args in [
+        &["--help"][..],
+        &["help"][..],
+        &[][..],
+        &["--json"][..],
+        &["--version"][..],
+    ] {
+        let out = home.molt(args, &[]);
+        assert!(
+            !stdout(&out).contains(BANNER_ART),
+            "{args:?}: {}",
+            stdout(&out)
+        );
+        assert!(!stderr(&out).contains(BANNER_ART), "{args:?}");
+    }
+}
+
+#[test]
+fn bn_02_bn_04_the_banner_tops_help_on_a_terminal_in_green() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let Some((code, screen)) = molt_pty(&home, "--help", &[], &[]) else {
+        return eprintln!("skipped: script(1) or timeout(1) isn't installed");
+    };
+    assert_eq!(code, Some(0), "{screen}");
+    let art = screen
+        .find(BANNER_ART)
+        .unwrap_or_else(|| panic!("{screen}"));
+    let usage = screen.find("Usage:").unwrap_or_else(|| panic!("{screen}"));
+    assert!(art < usage, "{screen}");
+    assert!(screen.contains("\x1b[32m"), "{screen:?}");
+
+    let (_, plain) = molt_pty(&home, "--help", &[], &[("NO_COLOR", "1")]).unwrap();
+    assert!(plain.contains(BANNER_ART), "{plain}");
+    assert!(!plain.contains("\x1b[32m"), "{plain:?}");
+
+    let (_, scan) = molt_pty(&home, "scan", &[], &[]).unwrap();
+    assert!(!scan.contains(BANNER_ART), "a named subcommand: {scan}");
+}
