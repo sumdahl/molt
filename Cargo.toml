@@ -1,7 +1,7 @@
 [package]
 # PK-07: `onyx` is taken on crates.io; the library and the command keep the name.
 name = "onyx-cli"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Reclaim disk space on Linux, safely: a disk cleaner that dry-runs first"
