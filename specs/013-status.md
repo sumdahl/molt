@@ -1,6 +1,6 @@
 # 013: `molt status`
 
-Status: Implemented (ST-01 to ST-14); Draft (ST-15 to ST-19, #38)
+Status: Implemented (ST-01 to ST-14); Accepted (ST-15 to ST-19, #38)
 Prefix: ST
 
 ## Goal
@@ -56,13 +56,6 @@ Prefix: ST
 - A unit test spawns a child that exits without being waited for and checks it's listed as a zombie, then reaps it.
 - Smoke tests on the real machine, read-only: exit 0, the four sections, the JSON shape, and a snapshot of the temp home unchanged.
 
-## Open questions (#38)
-
-1. **Period.** Every 2 seconds by default (proposed, like `top`'s 3 and `htop`'s 1.5), with `--interval`?
-2. **Rates over the period.** Measure the rates over the whole period (proposed, steadier), or keep the 200 ms sample?
-3. **Keys.** `q`/Ctrl-C quit, `p` pause, `r` refresh now (proposed)?
-4. **Shared terminal code.** Move the `analyze` browser's terminal code into a `terminal` module both use (proposed), rather than copying it?
-
 ## Decisions
 
 - **A 200 ms CPU sample**, so "how busy" is measured, not guessed from the load.
@@ -72,3 +65,7 @@ Prefix: ST
 - **The health score is ST-13's formula, as listed.** Simple on purpose, so anyone can check a score by hand.
 - **The text shows the hottest reading per sensor**; `--json` has every reading.
 - **Temperatures in °C.**
+- **`--watch` refreshes every 2 seconds**, with `--interval` from 1 to 60.
+- **Rates in the live view are over the whole period**, so they're steadier.
+- **`q`/Ctrl-C quit, `p` pauses, `r` refreshes now.**
+- **One shared terminal module** for the `analyze` browser and the live view.
