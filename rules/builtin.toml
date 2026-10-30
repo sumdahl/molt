@@ -1,12 +1,7 @@
-# Built-in cleaning rules (specs/002-rules-engine.md). Compiled into the binary.
-# The full first set lands with #5.
+# Built-in cleaning rules, reviewed in specs/010-built-in-rules.md. Compiled into the binary.
+# Every rule here needs a layout in BUILT_IN_LAYOUT (src/rules/tests.rs, BR-01).
 
-[[rule]]
-id = "thumbnails"
-name = "Thumbnail cache"
-category = "system-user"
-kind = "regenerable"
-paths = ["$XDG_CACHE_HOME/thumbnails"]
+# Developer tools
 
 [[rule]]
 id = "npm-cache"
@@ -17,3 +12,206 @@ paths = ["~/.npm/_cacache"]
 clean_with = ["npm", "cache", "clean", "--force"]
 processes = ["npm"]
 requires = ["npm"]
+
+[[rule]]
+id = "pnpm-store"
+name = "pnpm package store"
+category = "dev-tools"
+kind = "regenerable"
+paths = ["$XDG_DATA_HOME/pnpm/store"]
+clean_with = ["pnpm", "store", "prune"]
+processes = ["pnpm"]
+requires = ["pnpm"]
+
+[[rule]]
+id = "yarn-cache"
+name = "Yarn cache"
+category = "dev-tools"
+kind = "regenerable"
+paths = ["$XDG_CACHE_HOME/yarn"]
+clean_with = ["yarn", "cache", "clean"]
+processes = ["yarn"]
+requires = ["yarn"]
+
+[[rule]]
+id = "bun-cache"
+name = "Bun install cache"
+category = "dev-tools"
+kind = "regenerable"
+paths = ["~/.bun/install/cache"]
+clean_with = ["bun", "pm", "cache", "rm"]
+processes = ["bun"]
+requires = ["bun"]
+
+[[rule]]
+id = "cargo-registry"
+name = "Cargo crate downloads"
+category = "dev-tools"
+kind = "regenerable"
+paths = ["~/.cargo/registry/cache", "~/.cargo/registry/src"]
+processes = ["cargo"]
+
+[[rule]]
+id = "cargo-git"
+name = "Cargo git checkouts"
+category = "dev-tools"
+kind = "regenerable"
+paths = ["~/.cargo/git/checkouts"]
+processes = ["cargo"]
+
+[[rule]]
+id = "go-build-cache"
+name = "Go build cache"
+category = "dev-tools"
+kind = "regenerable"
+paths = ["$XDG_CACHE_HOME/go-build"]
+clean_with = ["go", "clean", "-cache"]
+processes = ["go"]
+requires = ["go"]
+
+[[rule]]
+id = "go-module-cache"
+name = "Go module cache"
+category = "dev-tools"
+kind = "regenerable"
+paths = ["~/go/pkg/mod"]
+clean_with = ["go", "clean", "-modcache"]
+processes = ["go"]
+requires = ["go"]
+
+[[rule]]
+id = "gradle-caches"
+name = "Gradle caches and wrappers"
+category = "dev-tools"
+kind = "regenerable"
+paths = ["~/.gradle/caches", "~/.gradle/wrapper/dists"]
+processes = ["java"]
+
+[[rule]]
+id = "maven-repository"
+name = "Maven local repository"
+category = "dev-tools"
+kind = "regenerable"
+paths = ["~/.m2/repository"]
+processes = ["java"]
+
+[[rule]]
+id = "uv-cache"
+name = "uv cache"
+category = "dev-tools"
+kind = "regenerable"
+paths = ["$XDG_CACHE_HOME/uv"]
+clean_with = ["uv", "cache", "clean"]
+processes = ["uv"]
+requires = ["uv"]
+
+[[rule]]
+id = "pip-cache"
+name = "pip cache"
+category = "dev-tools"
+kind = "regenerable"
+paths = ["$XDG_CACHE_HOME/pip"]
+processes = ["pip", "pip3"]
+
+[[rule]]
+id = "mise-cache"
+name = "mise download cache"
+category = "dev-tools"
+kind = "regenerable"
+paths = ["$XDG_CACHE_HOME/mise"]
+clean_with = ["mise", "cache", "clear"]
+processes = ["mise"]
+requires = ["mise"]
+
+[[rule]]
+id = "yay-cache"
+name = "yay AUR build cache"
+category = "dev-tools"
+kind = "regenerable"
+paths = ["$XDG_CACHE_HOME/yay"]
+processes = ["yay"]
+
+[[rule]]
+id = "paru-cache"
+name = "paru AUR build cache"
+category = "dev-tools"
+kind = "regenerable"
+paths = ["$XDG_CACHE_HOME/paru/clone"]
+processes = ["paru"]
+
+[[rule]]
+id = "jetbrains-cache"
+name = "JetBrains IDE caches"
+category = "dev-tools"
+kind = "regenerable"
+paths = ["$XDG_CACHE_HOME/JetBrains/*"]
+processes = ["java"]
+
+# Browsers: cache folders only, never the profile
+
+[[rule]]
+id = "firefox-cache"
+name = "Firefox cache"
+category = "browsers"
+kind = "regenerable"
+paths = ["$XDG_CACHE_HOME/mozilla/firefox/*/cache2"]
+processes = ["firefox"]
+
+[[rule]]
+id = "chrome-cache"
+name = "Chrome cache"
+category = "browsers"
+kind = "regenerable"
+paths = ["$XDG_CACHE_HOME/google-chrome/*/Cache", "$XDG_CACHE_HOME/google-chrome/*/Code Cache"]
+processes = ["chrome"]
+
+[[rule]]
+id = "chromium-cache"
+name = "Chromium cache"
+category = "browsers"
+kind = "regenerable"
+paths = ["$XDG_CACHE_HOME/chromium/*/Cache", "$XDG_CACHE_HOME/chromium/*/Code Cache"]
+processes = ["chromium"]
+
+[[rule]]
+id = "brave-cache"
+name = "Brave cache"
+category = "browsers"
+kind = "regenerable"
+paths = ["$XDG_CACHE_HOME/BraveSoftware/Brave-Browser/*/Cache", "$XDG_CACHE_HOME/BraveSoftware/Brave-Browser/*/Code Cache"]
+processes = ["brave"]
+
+# Apps
+
+[[rule]]
+id = "spotify-cache"
+name = "Spotify cache"
+category = "apps"
+kind = "regenerable"
+paths = ["$XDG_CACHE_HOME/spotify"]
+processes = ["spotify"]
+
+[[rule]]
+id = "discord-cache"
+name = "Discord cache"
+category = "apps"
+kind = "regenerable"
+paths = ["$XDG_CONFIG_HOME/discord/Cache", "$XDG_CONFIG_HOME/discord/Code Cache"]
+processes = ["Discord", "discord"]
+
+[[rule]]
+id = "slack-cache"
+name = "Slack cache"
+category = "apps"
+kind = "regenerable"
+paths = ["$XDG_CONFIG_HOME/Slack/Cache", "$XDG_CONFIG_HOME/Slack/Code Cache"]
+processes = ["slack"]
+
+# System (your files)
+
+[[rule]]
+id = "thumbnails"
+name = "Thumbnail cache"
+category = "system-user"
+kind = "regenerable"
+paths = ["$XDG_CACHE_HOME/thumbnails"]

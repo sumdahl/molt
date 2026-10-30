@@ -1,6 +1,6 @@
 # 010: Built-in rules
 
-Status: Accepted
+Status: Implemented
 Prefix: BR
 
 ## Goal

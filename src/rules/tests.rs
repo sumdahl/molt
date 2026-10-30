@@ -371,3 +371,188 @@ fn re_09_glob_matching_edge_cases() {
         assert_eq!(glob_match(pattern, name), expected, "{pattern} vs {name:?}");
     }
 }
+
+// Built-in rules (specs/010-built-in-rules.md)
+
+/// For each built-in rule: paths under home it must match, and siblings it must not.
+const BUILT_IN_LAYOUT: &[(&str, &[&str], &[&str])] = &[
+    ("npm-cache", &[".npm/_cacache"], &[".npm/_logs"]),
+    (
+        "pnpm-store",
+        &[".local/share/pnpm/store"],
+        &[".local/share/pnpm/global"],
+    ),
+    ("yarn-cache", &[".cache/yarn"], &[".config/yarn"]),
+    ("bun-cache", &[".bun/install/cache"], &[".bun/bin"]),
+    (
+        "cargo-registry",
+        &[".cargo/registry/cache", ".cargo/registry/src"],
+        &[".cargo/registry/index", ".cargo/bin"],
+    ),
+    ("cargo-git", &[".cargo/git/checkouts"], &[".cargo/git/db"]),
+    ("go-build-cache", &[".cache/go-build"], &[".config/go"]),
+    ("go-module-cache", &["go/pkg/mod"], &["go/bin"]),
+    (
+        "gradle-caches",
+        &[".gradle/caches", ".gradle/wrapper/dists"],
+        &[".gradle/gradle.properties"],
+    ),
+    (
+        "maven-repository",
+        &[".m2/repository"],
+        &[".m2/settings.xml"],
+    ),
+    ("uv-cache", &[".cache/uv"], &[".local/share/uv"]),
+    ("pip-cache", &[".cache/pip"], &[".config/pip"]),
+    ("mise-cache", &[".cache/mise"], &[".local/share/mise"]),
+    ("yay-cache", &[".cache/yay"], &[".config/yay"]),
+    ("paru-cache", &[".cache/paru/clone"], &[".cache/paru/diff"]),
+    (
+        "jetbrains-cache",
+        &[
+            ".cache/JetBrains/IntelliJIdea2025.2",
+            ".cache/JetBrains/RustRover2025.1",
+        ],
+        &[".config/JetBrains/IntelliJIdea2025.2"],
+    ),
+    (
+        "firefox-cache",
+        &[".cache/mozilla/firefox/abc.default/cache2"],
+        &[
+            ".cache/mozilla/firefox/abc.default/startupCache",
+            ".mozilla/firefox/abc.default/places.sqlite",
+        ],
+    ),
+    (
+        "chrome-cache",
+        &[
+            ".cache/google-chrome/Default/Cache",
+            ".cache/google-chrome/Profile 1/Code Cache",
+        ],
+        &[".config/google-chrome/Default/Login Data"],
+    ),
+    (
+        "chromium-cache",
+        &[
+            ".cache/chromium/Default/Cache",
+            ".cache/chromium/Default/Code Cache",
+        ],
+        &[".config/chromium/Default/Bookmarks"],
+    ),
+    (
+        "brave-cache",
+        &[
+            ".cache/BraveSoftware/Brave-Browser/Default/Cache",
+            ".cache/BraveSoftware/Brave-Browser/Default/Code Cache",
+        ],
+        &[".config/BraveSoftware/Brave-Browser/Default/Cookies"],
+    ),
+    (
+        "spotify-cache",
+        &[".cache/spotify"],
+        &[".config/spotify/prefs"],
+    ),
+    (
+        "discord-cache",
+        &[".config/discord/Cache", ".config/discord/Code Cache"],
+        &[
+            ".config/discord/Local Storage",
+            ".config/discord/settings.json",
+        ],
+    ),
+    (
+        "slack-cache",
+        &[".config/Slack/Cache", ".config/Slack/Code Cache"],
+        &[".config/Slack/storage"],
+    ),
+    (
+        "thumbnails",
+        &[".cache/thumbnails"],
+        &[".local/share/recently-used.xbel"],
+    ),
+];
+
+#[test]
+fn br_01_br_05_each_built_in_rule_matches_exactly_its_cache() {
+    let built_in = load(Path::new("/nonexistent")).unwrap();
+    let mut tested: Vec<&str> = BUILT_IN_LAYOUT.iter().map(|(id, ..)| *id).collect();
+    let mut shipped = ids(&built_in);
+    tested.sort_unstable();
+    shipped.sort_unstable();
+    assert_eq!(tested, shipped, "every built-in rule needs a layout here");
+
+    let sb = Sandbox::new();
+    for tool in built_in.iter().flat_map(|r| &r.requires) {
+        let exe = sb.bin.join(tool);
+        fs::write(&exe, "").unwrap();
+        fs::set_permissions(&exe, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    for (_, matching, other) in BUILT_IN_LAYOUT {
+        for rel in matching.iter().chain(*other) {
+            sb.file(&sb.dirs.home.join(rel).join("entry"));
+        }
+    }
+
+    let findings = find(&built_in, &sb.dirs, std::slice::from_ref(&sb.bin));
+
+    assert!(findings.inactive.is_empty(), "{:?}", findings.inactive);
+    assert!(findings.skipped.is_empty(), "{:?}", findings.skipped);
+    for (id, matching, _) in BUILT_IN_LAYOUT {
+        let mut got: Vec<&Path> = findings
+            .matches
+            .iter()
+            .filter(|m| m.rule.0 == *id)
+            .map(|m| m.candidate.path())
+            .collect();
+        let mut want: Vec<PathBuf> = matching.iter().map(|rel| sb.dirs.home.join(rel)).collect();
+        got.sort_unstable();
+        want.sort_unstable();
+        assert_eq!(got, want, "{id}");
+    }
+}
+
+#[test]
+fn br_02_rules_name_the_processes_that_own_their_data() {
+    for rule in load(Path::new("/nonexistent")).unwrap() {
+        // Thumbnails are written by many programs, and a missing one is just redrawn.
+        if rule.id.0 != "thumbnails" {
+            assert!(!rule.processes.is_empty(), "{}", rule.id);
+        }
+    }
+}
+
+#[test]
+fn br_03_cleanup_commands_are_exactly_the_reviewed_ones() {
+    let expected = [
+        ("npm-cache", "npm cache clean --force"),
+        ("pnpm-store", "pnpm store prune"),
+        ("yarn-cache", "yarn cache clean"),
+        ("bun-cache", "bun pm cache rm"),
+        ("go-build-cache", "go clean -cache"),
+        ("go-module-cache", "go clean -modcache"),
+        ("uv-cache", "uv cache clean"),
+        ("mise-cache", "mise cache clear"),
+    ];
+    let mut got: Vec<(String, String)> = load(Path::new("/nonexistent"))
+        .unwrap()
+        .into_iter()
+        .filter(|r| !r.clean_with.is_empty())
+        .map(|r| (r.id.0, r.clean_with.join(" ")))
+        .collect();
+    got.sort();
+    let mut want: Vec<(String, String)> = expected
+        .iter()
+        .map(|(a, b)| ((*a).to_owned(), (*b).to_owned()))
+        .collect();
+    want.sort();
+    assert_eq!(got, want);
+}
+
+#[test]
+fn br_04_a_rule_with_a_cleanup_command_requires_that_tool() {
+    for rule in load(Path::new("/nonexistent")).unwrap() {
+        if let Some(tool) = rule.clean_with.first() {
+            assert!(rule.requires.contains(tool), "{}", rule.id);
+        }
+    }
+}

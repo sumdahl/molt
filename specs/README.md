@@ -54,4 +54,4 @@ What this spec deliberately leaves out.
 | 003 | [Config and whitelist](003-config.md) | CF | Implemented |
 | 004 | [CLI skeleton](004-cli.md) | CL | Implemented |
 | 005 | [`molt scan`](005-scan.md) | SC | Implemented |
-| 010 | [Built-in rules](010-built-in-rules.md) | BR | Accepted |
+| 010 | [Built-in rules](010-built-in-rules.md) | BR | Implemented |
