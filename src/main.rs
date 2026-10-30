@@ -387,14 +387,13 @@ fn run_purge(
     findings
         .skipped
         .retain(|skip| picked(&skip.rule) || !is_kind(&skip.rule));
-    let mut preview =
+    let preview =
         scan::measure_findings(&kinds, findings, startup, args.trash.then_some(Mode::Trash))?;
-    preview.report.freed_by = "onyx purge".to_owned();
     print_preview(cli, &preview, &[])?;
     if !cli.json {
         print_left_out(
             &preview,
-            "build folders",
+            ("build folder", "build folders"),
             &[
                 ("recently-changed", "changed in the last 7 days"),
                 ("git-tracked", "may hold Git-tracked files"),
@@ -422,13 +421,12 @@ fn run_installer(
     installer::keep_old_files(&mut findings, SystemTime::now());
     // IN-04
     let mode = args.permanent.then_some(Mode::Permanent);
-    let mut preview = scan::measure_findings(&rules, findings, startup, mode)?;
-    preview.report.freed_by = "onyx installer".to_owned();
+    let preview = scan::measure_findings(&rules, findings, startup, mode)?;
     print_preview(cli, &preview, &[])?;
     if !cli.json {
         print_left_out(
             &preview,
-            "installers",
+            ("installer", "installers"),
             &[("recently-changed", "changed in the last 14 days")],
         );
     }
@@ -461,8 +459,7 @@ fn run_uninstall(
         .map(|package| package::preview(package, sudo.as_deref(), search_path));
     // UN-05
     let mode = args.permanent.then_some(Mode::Permanent);
-    let mut preview = scan::survey(&rules, startup, mode)?;
-    preview.report.freed_by = format!("onyx uninstall {app}");
+    let preview = scan::survey(&rules, startup, mode)?;
     print_uninstall_preview(cli, &app, &preview, &busy, package_preview.as_ref())?;
 
     // UN-10: a dry run never reaches sudo.
@@ -528,9 +525,9 @@ fn print_uninstall_preview(
     Ok(())
 }
 
-/// PG-04, PG-05, IN-03: how many items the preview left out, and why. `reasons` pairs a
-/// skip reason with what to say about it.
-fn print_left_out(preview: &Survey, what: &str, reasons: &[(&str, &str)]) {
+/// PG-04, PG-05, IN-03: how many items the preview left out, and why. `what` is the
+/// item's name, one and many; `reasons` pairs a skip reason with what to say about it.
+fn print_left_out(preview: &Survey, what: (&str, &str), reasons: &[(&str, &str)]) {
     for (reason, why) in reasons {
         let count = preview
             .report
@@ -538,6 +535,7 @@ fn print_left_out(preview: &Survey, what: &str, reasons: &[(&str, &str)]) {
             .iter()
             .filter(|skip| skip.reason == *reason)
             .count();
+        let what = if count == 1 { what.0 } else { what.1 };
         if count > 0 {
             println!("Left out {count} {what}: {why}. See --json.");
         }
@@ -583,7 +581,8 @@ fn act_on(
         && (fix_permissions
             || (interactive
                 && confirm(&format!(
-                    "Open the {locked} locked folders (add u+rwx) so they can be removed too?"
+                    "Open the {locked} locked {} (add u+rwx) so they can be removed too?",
+                    if locked == 1 { "folder" } else { "folders" }
                 ))?)) {
         Permissions::FixOwned
     } else {
@@ -957,7 +956,7 @@ fn run_optimize(
     if stop_for_dry_run(startup) || !preview.has_work() {
         return Ok(ExitCode::SUCCESS);
     }
-    if !go_ahead(cli, startup, "Run all of the above with sudo?")? {
+    if !go_ahead(cli, startup, &preview.question())? {
         return Ok(ExitCode::SUCCESS);
     }
     // SY-11: fail closed before the first command.

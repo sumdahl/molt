@@ -1056,12 +1056,12 @@ fn pg_07_p_05_dry_run_and_no_change_nothing() {
         stdout(&dry)
     );
     assert!(
-        stdout(&dry).contains("with `onyx purge`"),
+        !stdout(&dry).contains("can be freed with"),
         "{}",
         stdout(&dry)
     );
     assert!(
-        stdout(&dry).contains("Left out 1 build folders: changed in the last 7 days"),
+        stdout(&dry).contains("Left out 1 build folder: changed in the last 7 days"),
         "{}",
         stdout(&dry)
     );
@@ -1170,9 +1170,10 @@ fn in_05_p_05_dry_run_and_no_change_nothing() {
     let text = stdout(&dry);
     assert!(text.contains("Installers"), "{text}");
     assert!(text.contains("(to trash)"), "{text}");
-    assert!(text.contains("with `onyx installer`"), "{text}");
+    // SC-05 (#85): a command's own preview doesn't name itself.
+    assert!(!text.contains("can be freed with"), "{text}");
     assert!(
-        text.contains("Left out 1 installers: changed in the last 14 days"),
+        text.contains("Left out 1 installer: changed in the last 14 days"),
         "{text}"
     );
     assert_eq!(snapshot(&home.path), before);
@@ -1623,7 +1624,7 @@ fn un_06_un_07_p_05_dry_run_and_no_terminal_change_nothing() {
     let dry = home.onyx(&["uninstall", "foo", "--dry-run"], &[]);
     assert!(dry.status.success(), "{}", stderr(&dry));
     let text = stdout(&dry);
-    assert!(text.contains("with `onyx uninstall foo`"), "{text}");
+    assert!(!text.contains("can be freed with"), "{text}");
     assert!(text.contains("(to trash)"), "{text}");
     assert!(text.contains("foo itself isn't removed"), "{text}");
     assert_eq!(snapshot(&home.path), before);
@@ -2199,7 +2200,7 @@ fn op_09_op_10_p_05_a_dry_run_runs_only_the_dns_statistics() {
         text.contains(&format!("would run: {bin}/fc-cache\n")),
         "{text}"
     );
-    assert!(text.contains("Current Cache Size: 7"), "{text}");
+    assert!(text.contains("7 answers cached"), "{text}");
     assert!(
         text.contains(&format!(
             "would run: {bin}/sudo -- {bin}/resolvectl flush-caches\n"

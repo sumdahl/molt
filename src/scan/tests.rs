@@ -43,7 +43,7 @@ fn sc_02_failed_items_are_counted_on_the_rule_line() {
         }],
         skipped: Vec::new(),
         inactive: Vec::new(),
-        freed_by: "onyx clean".to_owned(),
+        freed_by: Some("onyx clean"),
     };
 
     let text = report.to_string();
@@ -53,4 +53,34 @@ fn sc_02_failed_items_are_counted_on_the_rule_line() {
         "{text}"
     );
     assert!(text.contains("Partial"), "{text}");
+}
+
+#[test]
+fn sc_05_lf_06_one_is_singular_and_only_scan_names_a_command() {
+    let report = |inactive: usize, freed_by| {
+        ScanReport {
+            total: 0,
+            partial: false,
+            rules: Vec::new(),
+            skipped: Vec::new(),
+            inactive: (0..inactive)
+                .map(|i| RuleId::try_from(format!("r{i}")).unwrap())
+                .collect(),
+            freed_by,
+        }
+        .to_string()
+    };
+    let one = report(1, Some("onyx clean"));
+    assert!(
+        one.contains("1 rule inactive: the tool it cleans up after isn't installed."),
+        "{one}"
+    );
+    assert!(
+        one.contains("Total: 0 B can be freed with `onyx clean`."),
+        "{one}"
+    );
+    let two = report(2, None);
+    assert!(two.contains("2 rules inactive: the tools they"), "{two}");
+    assert!(two.contains("Total: 0 B.\n"), "{two}");
+    assert!(!two.contains("can be freed with"), "{two}");
 }

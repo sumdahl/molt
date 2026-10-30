@@ -266,12 +266,16 @@ fn found(id: TaskId, exit: Option<i32>, stdout: &str) -> Found {
     }
 }
 
-/// OP-12: `resolvectl statistics`' "Current Cache Size" line, its spacing tidied.
+/// OP-12: `resolvectl statistics`' "Current Cache Size" counts answers, not bytes.
 fn cache_size(stats: &str) -> Option<String> {
     let line = stats
         .lines()
         .find(|line| line.contains("Current Cache Size"))?;
-    Some(line.split_whitespace().collect::<Vec<_>>().join(" "))
+    let count: u64 = line.rsplit(':').next()?.trim().parse().ok()?;
+    Some(match count {
+        1 => "1 answer cached".to_owned(),
+        n => format!("{n} answers cached"),
+    })
 }
 
 #[derive(Debug, Serialize)]
@@ -296,6 +300,21 @@ impl Preview {
     /// Whether a live run would run anything.
     pub fn has_work(&self) -> bool {
         self.tasks.iter().any(|task| task.live.is_some())
+    }
+
+    /// OP-09: the one question, naming the tasks that use `sudo`, since some don't (#85).
+    pub fn question(&self) -> String {
+        let sudo: Vec<&str> = self
+            .tasks
+            .iter()
+            .filter(|task| task.live.is_some() && task.id.needs_sudo())
+            .map(|task| task.id.id())
+            .collect();
+        match sudo.as_slice() {
+            [] => "Run all of the above?".to_owned(),
+            [one] => format!("Run all of the above? {one} uses sudo."),
+            many => format!("Run all of the above? {} use sudo.", many.join(", ")),
+        }
     }
 }
 

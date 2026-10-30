@@ -24,9 +24,10 @@ pub struct ScanReport {
     pub rules: Vec<RuleReport>,
     pub skipped: Vec<SkipEntry>,
     pub inactive: Vec<RuleId>,
-    /// The command that frees what this report shows.
+    /// SC-05: the command that frees what `onyx scan` shows. `None` in a command's own
+    /// preview, where naming the command being run says nothing.
     #[serde(skip)]
-    pub freed_by: String,
+    pub freed_by: Option<&'static str>,
 }
 
 #[derive(Debug, Serialize)]
@@ -72,7 +73,10 @@ pub struct Survey {
 
 /// Matches the enabled rules and measures them without changing anything (SC-01).
 pub fn scan(startup: &Startup) -> Result<ScanReport, PlanRefused> {
-    survey(&startup.rules, startup, None).map(|survey| survey.report)
+    survey(&startup.rules, startup, None).map(|survey| ScanReport {
+        freed_by: Some("onyx clean"),
+        ..survey.report
+    })
 }
 
 /// Matches `rules` and measures them with a safe-delete dry run. `mode` overrides every
@@ -146,7 +150,7 @@ pub fn measure_findings(
             })
             .collect(),
         inactive: findings.inactive,
-        freed_by: "onyx clean".to_owned(),
+        freed_by: None,
     };
     Ok(Survey {
         report,
@@ -316,19 +320,24 @@ impl fmt::Display for ScanReport {
         }
         writeln!(f)?;
         if !self.inactive.is_empty() {
-            writeln!(
-                f,
-                "{} rules inactive: the tools they clean up after aren't installed.",
-                self.inactive.len()
-            )?;
+            let text = match self.inactive.len() {
+                1 => "1 rule inactive: the tool it cleans up after isn't installed.".to_owned(),
+                n => format!("{n} rules inactive: the tools they clean up after aren't installed."),
+            };
+            writeln!(f, "{text}")?;
         }
         let locked: usize = self.rules.iter().map(|rule| rule.locked.len()).sum();
         if locked > 0 {
-            writeln!(
-                f,
-                "{locked} locked folders: you own them but can't read them, so their contents \
-                 weren't measured. `onyx clean` will ask before opening them (u+rwx)."
-            )?;
+            let text = match locked {
+                1 => "1 locked folder: you own it but can't read it, so its contents weren't \
+                      measured. `onyx clean` will ask before opening it (u+rwx)."
+                    .to_owned(),
+                n => format!(
+                    "{n} locked folders: you own them but can't read them, so their contents \
+                     weren't measured. `onyx clean` will ask before opening them (u+rwx)."
+                ),
+            };
+            writeln!(f, "{text}")?;
         }
         if self.partial {
             writeln!(
@@ -336,11 +345,13 @@ impl fmt::Display for ScanReport {
                 "Partial scan: some folders couldn't be read or measured, so sizes may be higher. See --json."
             )?;
         }
-        writeln!(
-            f,
-            "Total: {} can be freed with `{}`.",
-            human_size(self.total),
-            self.freed_by
-        )
+        match self.freed_by {
+            Some(command) => writeln!(
+                f,
+                "Total: {} can be freed with `{command}`.",
+                human_size(self.total)
+            ),
+            None => writeln!(f, "Total: {}.", human_size(self.total)),
+        }
     }
 }
