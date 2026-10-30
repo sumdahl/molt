@@ -1927,3 +1927,107 @@ fn un_08_un_11_apt_and_dnf_use_their_own_commands() {
         );
     }
 }
+
+/// A flatpak that has `org.example.App` for the user and `org.example.Sys` for the
+/// system, and a snap that has `snapapp`.
+const FAKE_FLATPAK: (&str, &str) = (
+    "flatpak",
+    "case \"$1 $2 $3\" in\n\
+     'info --user org.example.App' | 'info --system org.example.Sys') echo Ref: app/$3 ;;\n\
+     uninstall*) exit 0 ;;\n\
+     *) exit 1 ;;\n\
+     esac",
+);
+const FAKE_SNAP: (&str, &str) = (
+    "snap",
+    "case \"$1 $2\" in\n'list snapapp') echo snapapp 1.0 ;;\n'remove snapapp') exit 0 ;;\n*) exit 1 ;;\nesac",
+);
+
+#[test]
+fn un_16_un_17_un_19_a_user_flatpak_goes_without_sudo_and_its_data_to_the_trash() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let data = home.file(".var/app/org.example.App/config/app.conf", 4096);
+    let tools = FakeTools::new(&[FAKE_SUDO, FAKE_FLATPAK]);
+    let bin = tools.bin();
+
+    let dry = home.molt(
+        &["uninstall", "org.example.App", "--dry-run"],
+        &[("PATH", bin)],
+    );
+    let text = stdout(&dry);
+    assert!(text.contains("org.example.App (flatpak)"), "{text}");
+    assert!(
+        text.contains(&format!(
+            "would run: {bin}/flatpak uninstall --user org.example.App\n"
+        )),
+        "{text}"
+    );
+    assert!(exists(&data));
+
+    let out = home.molt(&["uninstall", "org.example.App", "--yes"], &[("PATH", bin)]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let ran = tools.ran();
+    assert!(
+        ran.contains("flatpak uninstall --user org.example.App\n"),
+        "{ran}"
+    );
+    assert!(!ran.contains("sudo"), "{ran}");
+    assert!(!exists(&data));
+    assert!(exists(
+        &home.path.join(".local/share/Trash/files/org.example.App")
+    ));
+}
+
+#[test]
+fn un_16_un_17_a_system_flatpak_and_a_snap_go_through_sudo() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    for (name, removal) in [
+        (
+            "org.example.Sys",
+            "flatpak uninstall --system org.example.Sys",
+        ),
+        ("snapapp", "snap remove snapapp"),
+    ] {
+        let home = Home::new();
+        let tools = FakeTools::new(&[FAKE_SUDO, FAKE_FLATPAK, FAKE_SNAP]);
+        let bin = tools.bin();
+        let out = home.molt(&["uninstall", name, "--yes"], &[("PATH", bin)]);
+        assert!(out.status.success(), "{}", stderr(&out));
+        assert!(
+            tools.ran().contains(&format!("sudo -- {bin}/{removal}\n")),
+            "{}",
+            tools.ran()
+        );
+    }
+}
+
+#[test]
+fn un_19_un_20_un_21_appimages_icons_and_snap_data_are_leftovers() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let gone = [
+        home.file("Applications/foo.AppImage", 4096),
+        home.file(".local/share/icons/hicolor/256x256/apps/foo.png", 4096),
+        home.file(".local/share/icons/hicolor/scalable/apps/foo.svg", 4096),
+        home.file("snap/foo/common/data", 4096),
+    ];
+    let versioned = home.file("Applications/foo-1.2.AppImage", 4096);
+    let link = home.path.join(".local/bin/foo.AppImage");
+    fs::create_dir_all(link.parent().unwrap()).unwrap();
+    symlink(&versioned, &link).unwrap();
+
+    let out = home.molt(&["uninstall", "foo", "--yes"], &[]);
+    assert!(out.status.success(), "{}\n{}", stdout(&out), stderr(&out));
+    for path in &gone {
+        assert!(!exists(path), "{}", path.display());
+    }
+    assert!(exists(&versioned), "a versioned name is a partial match");
+    assert!(fs::symlink_metadata(&link).is_ok(), "symlinks are skipped");
+}

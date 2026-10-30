@@ -361,18 +361,20 @@ fn run_uninstall(
     print_uninstall_preview(cli, &app, &preview, &busy, package_preview.as_ref())?;
 
     // UN-10: a dry run never reaches sudo.
-    let removable = package.as_ref().zip(sudo.as_deref());
-    if stop_for_dry_run(startup) || (removable.is_none() && preview.report.rules.is_empty()) {
+    let removal = package
+        .as_ref()
+        .and_then(|package| package.command(sudo.as_deref()));
+    if stop_for_dry_run(startup) || (removal.is_none() && preview.report.rules.is_empty()) {
         return Ok(ExitCode::SUCCESS);
     }
     // UN-11: one question for both.
     if !go_ahead(cli, "Remove all of the above?")? {
         return Ok(ExitCode::SUCCESS);
     }
-    if let Some((package, sudo)) = removable {
+    if let Some(removal) = &removal {
         // SY-11: fail closed before the command.
         let mut log = molt::safe_delete::CommandLog::open(&startup.env.context(&startup.config))?;
-        let run = package::remove(package, sudo, search_path, &mut log)?;
+        let run = package::remove(removal, search_path, &mut log)?;
         if cli.json {
             println!("{}", serde_json::json!({ "package": run }));
         }

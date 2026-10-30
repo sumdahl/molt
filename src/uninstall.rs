@@ -84,64 +84,90 @@ impl fmt::Display for AppName {
     }
 }
 
-/// UN-02: a path made of `before`, the name and `after`.
+/// UN-02: the paths of one location, each `before`, the name, then `after`.
 struct Location {
     id: &'static str,
     what: &'static str,
-    before: &'static str,
-    after: &'static str,
+    paths: &'static [(&'static str, &'static str)],
     kind: Kind,
 }
 
-const LOCATIONS: [Location; 7] = [
+const LOCATIONS: [Location; 11] = [
     Location {
         id: "uninstall-config",
         what: "settings",
-        before: "$XDG_CONFIG_HOME/",
-        after: "",
+        paths: &[("$XDG_CONFIG_HOME/", "")],
         kind: Kind::UserContent,
     },
     Location {
         id: "uninstall-data",
         what: "data",
-        before: "$XDG_DATA_HOME/",
-        after: "",
+        paths: &[("$XDG_DATA_HOME/", "")],
         kind: Kind::UserContent,
     },
     Location {
         id: "uninstall-state",
         what: "state",
-        before: "$XDG_STATE_HOME/",
-        after: "",
+        paths: &[("$XDG_STATE_HOME/", "")],
         kind: Kind::UserContent,
     },
     // UN-05: deleted like every regenerable rule.
     Location {
         id: "uninstall-cache",
         what: "cache",
-        before: "$XDG_CACHE_HOME/",
-        after: "",
+        paths: &[("$XDG_CACHE_HOME/", "")],
         kind: Kind::Regenerable,
     },
     Location {
         id: "uninstall-dotfolder",
         what: "dot-folder",
-        before: "~/.",
-        after: "",
+        paths: &[("~/.", "")],
         kind: Kind::UserContent,
     },
     Location {
         id: "uninstall-menu-entry",
         what: "menu entry",
-        before: "$XDG_DATA_HOME/applications/",
-        after: ".desktop",
+        paths: &[("$XDG_DATA_HOME/applications/", ".desktop")],
         kind: Kind::UserContent,
     },
     Location {
         id: "uninstall-autostart",
         what: "autostart entry",
-        before: "$XDG_CONFIG_HOME/autostart/",
-        after: ".desktop",
+        paths: &[("$XDG_CONFIG_HOME/autostart/", ".desktop")],
+        kind: Kind::UserContent,
+    },
+    // UN-19
+    Location {
+        id: "uninstall-flatpak-data",
+        what: "flatpak data",
+        paths: &[("~/.var/app/", "")],
+        kind: Kind::UserContent,
+    },
+    Location {
+        id: "uninstall-snap-data",
+        what: "snap data",
+        paths: &[("~/snap/", "")],
+        kind: Kind::UserContent,
+    },
+    // UN-20: exact names only, so no versioned file names.
+    Location {
+        id: "uninstall-appimage",
+        what: "AppImage",
+        paths: &[
+            ("~/Applications/", ".AppImage"),
+            ("~/Applications/", ".appimage"),
+            ("~/.local/bin/", ".AppImage"),
+            ("~/.local/bin/", ".appimage"),
+        ],
+        kind: Kind::UserContent,
+    },
+    Location {
+        id: "uninstall-icon",
+        what: "icons",
+        paths: &[
+            ("$XDG_DATA_HOME/icons/hicolor/*/apps/", ".png"),
+            ("$XDG_DATA_HOME/icons/hicolor/*/apps/", ".svg"),
+        ],
         kind: Kind::UserContent,
     },
 ];
@@ -156,10 +182,11 @@ pub fn rules(app: &AppName) -> Result<Vec<Rule>, String> {
                 name: format!("{app} {}", location.what),
                 category: Category::Apps,
                 kind: location.kind,
-                paths: vec![Pattern::try_from(format!(
-                    "{}{app}{}",
-                    location.before, location.after
-                ))?],
+                paths: location
+                    .paths
+                    .iter()
+                    .map(|(before, after)| Pattern::try_from(format!("{before}{app}{after}")))
+                    .collect::<Result<_, _>>()?,
                 clean_with: Vec::new(),
                 processes: vec![app.to_string()],
                 requires: Vec::new(),

@@ -22,11 +22,23 @@ pub enum Manager {
     Apt,
     Dnf,
     Zypper,
+    /// UN-16: installed for this user.
+    FlatpakUser,
+    FlatpakSystem,
+    Snap,
 }
 
 impl Manager {
-    /// UN-08: the order they're tried in.
-    const ALL: [Self; 4] = [Self::Pacman, Self::Apt, Self::Dnf, Self::Zypper];
+    /// UN-08, UN-16: the order they're tried in.
+    const ALL: [Self; 7] = [
+        Self::Pacman,
+        Self::Apt,
+        Self::Dnf,
+        Self::Zypper,
+        Self::FlatpakUser,
+        Self::FlatpakSystem,
+        Self::Snap,
+    ];
 
     /// The tool that answers who owns what, and the one that removes.
     fn tools(self) -> (&'static str, &'static str) {
@@ -35,25 +47,42 @@ impl Manager {
             Self::Apt => ("dpkg-query", "apt-get"),
             Self::Dnf => ("rpm", "dnf"),
             Self::Zypper => ("rpm", "zypper"),
+            Self::FlatpakUser | Self::FlatpakSystem => ("flatpak", "flatpak"),
+            Self::Snap => ("snap", "snap"),
+        }
+    }
+
+    /// UN-17: a user's own flatpak needs no root.
+    fn needs_sudo(self) -> bool {
+        self != Self::FlatpakUser
+    }
+
+    /// UN-16: how `query` tells whether `name` is installed, also used as its preview.
+    fn installed(self) -> &'static [&'static str] {
+        match self {
+            Self::Pacman => &["-Qq"],
+            Self::Apt => &["-W", "-f=${Status}"],
+            Self::Dnf | Self::Zypper => &["-q"],
+            Self::FlatpakUser => &["info", "--user"],
+            Self::FlatpakSystem => &["info", "--system"],
+            Self::Snap => &["list"],
         }
     }
 
     /// UN-08: the installed package named `name`, or else the one owning `program`.
     fn owner(self, query: &Path, name: &str, program: Option<&Path>) -> Option<String> {
-        let by_name = match self {
-            Self::Pacman => ask(query, &["-Qq", name]),
-            Self::Apt => {
-                ask(query, &["-W", "-f=${Status}", name]).filter(|s| s == "install ok installed")
-            }
-            Self::Dnf | Self::Zypper => ask(query, &["-q", name]),
-        }
-        .map(|_| name.to_owned());
+        let args: Vec<&str> = self.installed().iter().copied().chain([name]).collect();
+        let by_name = ask(query, &args)
+            .filter(|answer| self != Self::Apt || answer == "install ok installed")
+            .map(|_| name.to_owned());
         let by_program = || {
             let program = program?.to_str()?;
             match self {
                 Self::Pacman => ask(query, &["-Qqo", program]),
                 Self::Apt => dpkg_owner(&ask(query, &["-S", program])?).map(str::to_owned),
                 Self::Dnf | Self::Zypper => ask(query, &["-qf", "--qf", "%{NAME}", program]),
+                // UN-16: by the exact name only.
+                Self::FlatpakUser | Self::FlatpakSystem | Self::Snap => None,
             }
         };
         by_name.or_else(by_program).filter(|package| plain(package))
@@ -65,7 +94,9 @@ impl Manager {
             // `-n` and `--print` conflict; `-n` only changes saved config files.
             Self::Pacman => (remover, &["-Rs", "--print"]),
             Self::Apt => (remover, &["-s", "remove"]),
-            Self::Dnf | Self::Zypper => (query, &["-q"]),
+            Self::Dnf | Self::Zypper | Self::FlatpakUser | Self::FlatpakSystem | Self::Snap => {
+                (query, self.installed())
+            }
         };
         invocation(program, args, package)
     }
@@ -74,7 +105,10 @@ impl Manager {
     fn removal(self, remover: &Path, package: &str) -> Invocation {
         let args: &[&str] = match self {
             Self::Pacman => &["-Rns"],
-            Self::Apt | Self::Dnf | Self::Zypper => &["remove"],
+            Self::Apt | Self::Dnf | Self::Zypper | Self::Snap => &["remove"],
+            // No `--delete-data`: molt trashes `~/.var/app/N` itself (UN-19).
+            Self::FlatpakUser => &["uninstall", "--user"],
+            Self::FlatpakSystem => &["uninstall", "--system"],
         };
         invocation(remover, args, package)
     }
@@ -139,6 +173,18 @@ pub struct Package {
     removal: Invocation,
 }
 
+impl Package {
+    /// UN-11, UN-15, UN-17: the exact live command, or `None` when it needs a `sudo`
+    /// that isn't there.
+    pub fn command(&self, sudo: Option<&Path>) -> Option<Invocation> {
+        if self.manager.needs_sudo() {
+            sudo.map(|sudo| self.removal.under(sudo))
+        } else {
+            Some(self.removal.clone())
+        }
+    }
+}
+
 /// UN-08: the first manager on `search_path` that owns `app`.
 pub fn find(app: &AppName, search_path: &[PathBuf]) -> Option<Package> {
     let name = app.to_string();
@@ -162,7 +208,7 @@ pub struct PackagePreview {
     pub manager: Manager,
     pub name: String,
     pub preview: PreviewRun,
-    /// UN-15: `None` without `sudo`.
+    /// UN-15: `None` when it needs a `sudo` that isn't there.
     pub would_run: Option<String>,
 }
 
@@ -172,7 +218,7 @@ pub fn preview(package: &Package, sudo: Option<&Path>, search_path: &[PathBuf]) 
         manager: package.manager,
         name: package.name.clone(),
         preview: run_full(&package.preview, search_path),
-        would_run: sudo.map(|sudo| package.removal.under(sudo).to_string()),
+        would_run: package.command(sudo).map(|run| run.to_string()),
     }
 }
 
@@ -232,15 +278,13 @@ impl fmt::Display for PackagePreview {
     }
 }
 
-/// UN-11, UN-13: removes the package through `sudo`, and logs the command (SY-11).
+/// UN-11, UN-13: runs the package's `command` and logs it (SY-11).
 pub fn remove(
-    package: &Package,
-    sudo: &Path,
+    run: &Invocation,
     search_path: &[PathBuf],
     log: &mut CommandLog,
 ) -> std::io::Result<CommandRun> {
-    let run = package.removal.under(sudo);
-    let exit = run_live(&run, search_path);
+    let exit = run_live(run, search_path);
     log.record(&run.words(), exit, 0)?;
     Ok(CommandRun {
         command: run.to_string(),

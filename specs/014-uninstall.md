@@ -1,11 +1,11 @@
 # 014: `molt uninstall`
 
-Status: Implemented (UN-01 to UN-15)
+Status: Implemented
 Prefix: UN
 
 ## Goal
 
-`molt uninstall <app>` removes what an app left in your home: its settings, data, state and cache in the XDG folders, its legacy dot-folder, and its menu and autostart entries. You name the app; molt looks only at the exact paths that name gives, shows the full dry run, and moves what you confirm to the trash through safe delete (001). It covers the home leftovers (#45) and removing the program through the system package manager (#46). Flatpak, snap and AppImage (#47) add requirements here later.
+`molt uninstall <app>` removes what an app left in your home: its settings, data, state and cache in the XDG folders, its legacy dot-folder, and its menu and autostart entries. You name the app; molt looks only at the exact paths that name gives, shows the full dry run, and moves what you confirm to the trash through safe delete (001). It covers the home leftovers (#45), removing the program through the system package manager (#46), and flatpak, snap and AppImage apps (#47).
 
 ## Non-goals
 
@@ -31,6 +31,9 @@ The first one found on the absolute `$PATH` entries (SC-10) that owns the app is
 | apt | `dpkg-query`, `apt-get` | `dpkg-query -W N` shows it installed, or `dpkg-query -S <N on $PATH>` names it | `apt-get -s remove <pkg>` | `apt-get remove <pkg>` |
 | dnf | `rpm`, `dnf` | `rpm -q N`, or `rpm -qf <N on $PATH>` names it | `rpm -q <pkg>` | `dnf remove <pkg>` |
 | zypper | `rpm`, `zypper` | as dnf | `rpm -q <pkg>` | `zypper remove <pkg>` |
+| flatpak (yours) | `flatpak` | `flatpak info --user N` succeeds | `flatpak info --user N` | `flatpak uninstall --user N`, **without** `sudo` |
+| flatpak (system) | `flatpak` | `flatpak info --system N` succeeds | `flatpak info --system N` | `flatpak uninstall --system N` |
+| snap | `snap` | `snap list N` succeeds | `snap list N` | `snap remove N` |
 
 ## Locations
 
@@ -45,6 +48,10 @@ For a name `N`:
 | `uninstall-dotfolder` | `~/.N` | user-content (trash) |
 | `uninstall-menu-entry` | `$XDG_DATA_HOME/applications/N.desktop` | user-content (trash) |
 | `uninstall-autostart` | `$XDG_CONFIG_HOME/autostart/N.desktop` | user-content (trash) |
+| `uninstall-flatpak-data` | `~/.var/app/N` | user-content (trash) |
+| `uninstall-snap-data` | `~/snap/N` | user-content (trash) |
+| `uninstall-appimage` | `~/Applications/N.AppImage`, `~/Applications/N.appimage`, `~/.local/bin/N.AppImage`, `~/.local/bin/N.appimage` | user-content (trash) |
+| `uninstall-icon` | `$XDG_DATA_HOME/icons/hicolor/*/apps/N.png`, `….svg` | user-content (trash) |
 
 ## Requirements
 
@@ -66,6 +73,14 @@ For a name `N`:
 - **UN-14** A running app (UN-04) leaves the package out too.
 - **UN-15** molt never runs as root (CL-07). Without `sudo` found on an absolute `$PATH` entry, the package is reported but left out, and the leftovers still go ahead.
 
+### Flatpak, snap and AppImage (#47)
+- **UN-16** Flatpak and snap are tried after the system managers, in the table's order, by the exact name: a flatpak's application id (`org.mozilla.firefox`), or a snap's name. Everything in UN-08 to UN-14 applies to them.
+- **UN-17** A flatpak installed for you is removed with `flatpak uninstall --user` and no `sudo`, so it needs neither root nor `sudo` (P-04). A system flatpak and a snap go through `sudo` as UN-11 says.
+- **UN-18** Flatpak asks its own question as the system managers do. `snap remove` doesn't ask, but snapd keeps a snapshot of the snap's data, so molt's question is the only one there.
+- **UN-19** `~/.var/app/N` (a flatpak's data) and `~/snap/N` (a snap's) are leftovers like the others: in the preview, kept if the removal fails (UN-12), and moved to the trash.
+- **UN-20** An AppImage is the file `N.AppImage` (or `N.appimage`) in `~/Applications` or `~/.local/bin`, plus its icons named `N.png` or `N.svg` in the hicolor theme. They go to the trash like the other leftovers. A file named after a version (`N-1.2.AppImage`) isn't matched, as that would be a partial match.
+- **UN-21** A symlink at any of these paths is skipped (RE-10), as `~/.local/bin` often holds links to programs elsewhere.
+
 ## Test strategy
 
 - Smoke tests on a temp home with every location filled for one app, a second app whose name shares a prefix (`foo` and `foo-bar`: only `foo` is touched), a symlink at one location, and the whitelist covering another.
@@ -73,6 +88,7 @@ For a name `N`:
 - UN-04: a copied program named after the app, kept running, leaves everything in place.
 - UN-05: the default run puts settings in the temp home's trash and deletes the cache; `--permanent` puts nothing in the trash.
 - P-05: `--dry-run` and "no" leave the snapshot unchanged.
+- UN-16 to UN-21: fake `flatpak` and `snap` on the temp `$PATH`. A user flatpak's removal is recorded without `sudo`, a system flatpak's and a snap's with it. A temp home with `~/.var/app/N`, `~/snap/N`, `~/Applications/N.AppImage`, a versioned AppImage (kept), an icon, and a symlinked `~/.local/bin/N.AppImage` (kept).
 - UN-08 to UN-15: fake `pacman`, `dpkg-query`, `apt-get`, `rpm`, `dnf` and `sudo` scripts on a temp `$PATH` that record their arguments and never touch the system, as in 007's tests. A dry run records no `sudo`. The `sudo` arguments start with `--` and an absolute tool path, with no `--noconfirm` or `-y`. A failing fake removal keeps the leftovers and exits 3. A relative `$PATH` entry is ignored.
 
 ## Decisions
@@ -81,4 +97,6 @@ For a name `N`:
 - **Rules built in memory**, so uninstall reuses `clean`'s whole path instead of a second one.
 - **No `~/.local/bin/N`.** That's the program, which #46 and #47 handle.
 - **The manager asks again.** Removing a package can take dependencies with it, and only the manager knows its transaction for sure. It asks after molt's preview, so nothing is removed without two yeses.
+- **Versioned AppImages aren't matched.** Exact names only. A user can rename the file or remove it with `molt analyze`.
+- **No `--delete-data`.** Flatpak would delete `~/.var/app/N` itself; molt moves it to the trash instead, so it can come back.
 - **`pacman -Rns`**: also removes dependencies that nothing else needs, and the package's saved config backups. `apt-get remove` and `dnf remove` already handle dependencies their own way.
