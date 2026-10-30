@@ -26,10 +26,10 @@ use onyx::system;
 use onyx::uninstall::package::{self, PackagePreview};
 use onyx::uninstall::{self, AppName};
 
-/// Reclaim disk space on Linux, safely.
 #[derive(Parser)]
-// PK-07: the crate is `onyx-cli`; the command is `onyx`.
-#[command(name = "onyx", version, about)]
+// PK-07: the crate is `onyx-cli`; the command is `onyx`. The about is written here,
+// not taken from the crates.io description.
+#[command(name = "onyx", version, about = "Reclaim disk space on Linux, safely")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
@@ -59,8 +59,8 @@ enum Command {
     /// Move old installers (.deb, .rpm, .AppImage, .iso…) in Downloads and Desktop to the
     /// trash: preview first, then ask.
     Installer(InstallerArgs),
-    /// Remove what an app left in your home (settings, data, cache, menu entries):
-    /// preview first, then ask. The program itself is left to your package manager.
+    /// Remove an app and what it left in your home (settings, data, cache, menu
+    /// entries), its package through its own manager: preview first, then ask.
     Uninstall(UninstallArgs),
     /// Show what takes the space in a folder, largest first: a browser on a terminal, a
     /// listing otherwise. Changes nothing.

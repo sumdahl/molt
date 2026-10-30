@@ -3131,3 +3131,18 @@ fn fp_05_ctrl_c_while_waiting_for_the_finger_changes_nothing() {
     assert_eq!(snapshot(&home.path), before, "{screen}");
     assert!(confirmations(&home).is_empty());
 }
+
+#[test]
+fn help_says_what_onyx_and_uninstall_do() {
+    let help = stdout(&onyx(&["--help"]));
+    // Its own about, not the crates.io description (PK-07).
+    assert_eq!(
+        help.lines().next(),
+        Some("Reclaim disk space on Linux, safely")
+    );
+    assert!(
+        help.contains("its package through its own manager"),
+        "{help}"
+    );
+    assert!(!help.contains("left to your package manager"), "{help}");
+}
