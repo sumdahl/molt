@@ -22,9 +22,11 @@ The release workflow publishes the section matching the pushed tag as the GitHub
 
 - The `molt` menu: a bare `molt` on a terminal lists every command under the banner; arrows or `j`/`k` and Enter run one exactly as typed (dry run, preview and question included), with the menu's `--dry-run`/`--live`/`--yes`, then return. Uninstall asks for the app's name; Analyze opens on `~`; Status runs live. Piped, a bare `molt` is still `molt scan`. Spec: `specs/019-menu.md`.
 
+- `molt update`: the newest release, only if its checksum is signed by a maintainer's key built into molt (`ssh-keygen -Y verify`). Downloads with `curl` (HTTPS only, 100 MiB cap) into a fresh temp folder, checks the checksum, that the archive holds only plain files in one folder, and that the new binary reports the new version. Then it swaps it in atomically (`RENAME_EXCHANGE`) and trashes the old one. Only a molt you own under your home is replaced. `molt remove`: molt's binary, config, cache, state and completion files to the trash (`--permanent` to delete), keeping the operation log unless `--with-log`. Both preview first and ask. Spec: `specs/020-self.md`.
+
 ### Changed
 - `system`, `optimize` and `purge` check `--only`/`--skip` ids through clap, which lists the valid ones and suggests the closest (still exit 2).
-- Releases are signed: the release workflow builds only from a tag signed with a maintainer's SSH key, listed in `.github/allowed_signers`. Check a tag with `git -c gpg.ssh.allowedSignersFile=.github/allowed_signers verify-tag vX.Y.Z`.
+- Releases are signed: the release workflow builds only from a tag signed with a maintainer's SSH key, listed in `.github/allowed_signers`. From now on the maintainer also signs each release's `.sha256` (`.sha256.sig`), which `molt update` requires. Check a tag with `git -c gpg.ssh.allowedSignersFile=.github/allowed_signers verify-tag vX.Y.Z`.
 
 ## [0.1.0] - 2026-10-30
 

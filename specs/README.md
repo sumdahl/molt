@@ -68,4 +68,4 @@ What this spec deliberately leaves out.
 | 017 | [`molt history`](017-history.md) | HI | Implemented |
 | 018 | [Shell completions](018-completions.md) | CO | Implemented |
 | 019 | [The `molt` menu](019-menu.md) | MN | Implemented |
-| 020 | [`molt update` and `molt remove`](020-self.md) | SE | Accepted |
+| 020 | [`molt update` and `molt remove`](020-self.md) | SE | Implemented |

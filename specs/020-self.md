@@ -1,6 +1,6 @@
 # 020: `molt update` and `molt remove`
 
-Status: Accepted (#61)
+Status: Implemented (#61)
 Prefix: SE
 
 ## Goal
@@ -29,7 +29,7 @@ molt carries the allowed signers in the binary (from `.github/allowed_signers` a
 - **SE-03** The dry run (always shown first, P-14) lists the current and newest versions, the exact URLs, each verification step and its result, and what would be replaced. With nothing newer, it says so and changes nothing.
 - **SE-04** molt replaces only its own running binary (`/proc/self/exe`), and only when that file and its folder belong to you and are under your home. Otherwise it names the package manager or path to update with and exits 1, having changed nothing.
 - **SE-05** The swap goes through safe delete (P-01): the new binary is copied beside the old one, then the two are exchanged in one `renameat2(RENAME_EXCHANGE)` in the same folder, so molt is never missing or half-written. The old binary, now under the temporary name, goes to the trash, so the update can be undone. A filesystem that can't exchange is reported, and nothing is replaced.
-- **SE-06** The download folder is removed through safe delete when molt is done, whatever happened. The swap is in the operation log as a command entry, and the old binary's move to the trash as an item entry.
+- **SE-06** The download folder is removed through safe delete when molt is done, whatever happened, without a log entry: it's molt's own scratch, and a dry run writes no log (SD-15). The swap is in the operation log as a command entry, and the old binary's move to the trash as an item entry.
 - **SE-09** In debug builds only (the ones tests use), `MOLT_TEST_ALLOWED_SIGNERS` names an allowed-signers file to use instead of the built-in one, so tests can sign a fake release with a test key. Release builds don't read it.
 
 ### `molt remove`
@@ -48,7 +48,7 @@ molt carries the allowed signers in the binary (from `.github/allowed_signers` a
 ## Decisions
 
 - **The repository goes public** before `molt update` is used for real (maintainer, 2026-10-30), so `curl` can see releases. Until then `molt update` reports that it can't find a release.
-- **The maintainer signs each release's checksum** (maintainer, 2026-10-30): after CI publishes, `ssh-keygen -Y sign -f ~/.ssh/id_personal -n molt-release <tarball>.sha256`, then `gh release upload vX.Y.Z <tarball>.sha256.sig`. AGENTS.md's release steps say so.
+- **The maintainer signs each release's checksum** (maintainer, 2026-10-30): after CI publishes, `ssh-keygen -Y sign -f ~/.ssh/id_personal -n molt-release <tarball>.sha256`, then `gh release upload vX.Y.Z <tarball>.sha256.sig`. AGENTS.md's release steps say so. `.github/allowed_signers` allows the key for both the `git` and `molt-release` namespaces.
 
 - **Owning tools for the network and crypto**, as P-07 and the no-dependencies rule ask. `curl`, `sha256sum` and `ssh-keygen` are on nearly every Linux system.
 - **The maintainer signs the checksum, not CI.** The signing key never leaves the maintainer's machine.
