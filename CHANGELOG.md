@@ -16,3 +16,6 @@ The release workflow publishes the section matching the pushed tag as the GitHub
 - molt refuses to run as root.
 - `molt scan` (also `molt` with no command): shows how much space could be freed, by category and rule, without changing anything. `--json` lists every path. The sizes come from the same dry run `clean` will use, so whitelisted and protected paths are never counted. Exit code 3 if some folder couldn't be read.
 - 24 built-in rules for the caches that fill a developer's disk: npm, pnpm, Yarn, Bun, Cargo, Go, Gradle, Maven, uv, pip, mise, yay, paru, JetBrains, Firefox, Chrome, Chromium, Brave, Spotify, Discord, Slack and thumbnails. Each lists the tool's own cleanup command where there is one, and the programs that must not be running. Reviewed in `specs/010-built-in-rules.md`.
+
+### Fixed
+- `molt scan` showed a rule as `0 B` with no hint when something inside couldn't be measured. The rule's line now says how many items failed, and the scan is marked partial.
