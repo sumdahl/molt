@@ -1313,13 +1313,11 @@ fn an_10_an_13_an_15_the_browser_navigates_and_restores_the_terminal() {
     let data = home.path.join("data");
     let before = snapshot(&home.path);
 
-    let command = format!(
-        "{} 10 {} analyze {}",
-        timeout.display(),
-        env!("CARGO_BIN_EXE_molt"),
-        data.display()
-    );
-    let mut child = Command::new(script)
+    let command = format!("{} analyze {}", env!("CARGO_BIN_EXE_molt"), data.display());
+    // A stuck browser or script(1) must fail the test, not hang it.
+    let mut child = Command::new(timeout)
+        .arg("20")
+        .arg(script)
         .args(["-qec", &command, "/dev/null"])
         .env_clear()
         .env("HOME", &home.path)
@@ -1335,6 +1333,8 @@ fn an_10_an_13_an_15_the_browser_navigates_and_restores_the_terminal() {
     stdin.write_all(b"l").unwrap();
     std::thread::sleep(std::time::Duration::from_millis(300));
     stdin.write_all(b"hq").unwrap();
+    // Some script(1) versions wait for their stdin to close before exiting.
+    drop(stdin);
     let out = child.wait_with_output().unwrap();
     let screen = String::from_utf8_lossy(&out.stdout);
 
