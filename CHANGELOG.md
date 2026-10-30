@@ -18,7 +18,10 @@ The release workflow publishes the section matching the pushed tag as the GitHub
 
 - `molt history`: what molt trashed, deleted and ran, newest first, read from the operation log without writing anything. Local times, sizes, exit statuses of failed commands, how many went to the trash. `--limit`, `--all`, `--since`, `--json`. An unreadable line is skipped and counted (exit 3). Spec: `specs/017-history.md`.
 
+- `molt completions <bash|zsh|fish>`: a static completion script for every command, flag and fixed id, generated from molt's own command definitions with no completion crate; it never runs molt on Tab. Spec: `specs/018-completions.md`.
+
 ### Changed
+- `system`, `optimize` and `purge` check `--only`/`--skip` ids through clap, which lists the valid ones and suggests the closest (still exit 2).
 - Releases are signed: the release workflow builds only from a tag signed with a maintainer's SSH key, listed in `.github/allowed_signers`. Check a tag with `git -c gpg.ssh.allowedSignersFile=.github/allowed_signers verify-tag vX.Y.Z`.
 
 ## [0.1.0] - 2026-10-30

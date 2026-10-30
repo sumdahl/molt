@@ -8,6 +8,7 @@ use std::time::SystemTime;
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use molt::analyze;
 use molt::clean::{self, Busy};
+use molt::completions::{self, Shell};
 use molt::config::{Decision, Requested};
 use molt::installer;
 use molt::optimize;
@@ -69,15 +70,27 @@ enum Command {
     Optimize(OptimizeArgs),
     /// Show what molt has removed and run, newest first. Changes nothing.
     History(HistoryArgs),
+    /// Print a shell completion script: bash, zsh or fish.
+    Completions(CompletionsArgs),
+}
+
+#[derive(Clone, Args)]
+struct CompletionsArgs {
+    shell: Shell,
+}
+
+/// CO-03: a fixed list of ids, which clap checks and completions offer.
+fn ids<const N: usize>(ids: [&'static str; N]) -> clap::builder::PossibleValuesParser {
+    clap::builder::PossibleValuesParser::new(ids)
 }
 
 #[derive(Clone, Args)]
 struct PurgeArgs {
-    /// Only these kinds: cargo, node, python-venv, gradle, maven, next, zig.
-    #[arg(long, num_args = 1.., value_name = "KIND")]
+    /// Only these kinds of project.
+    #[arg(long, num_args = 1.., value_name = "KIND", value_parser = ids(purge::ProjectKind::ALL.map(purge::ProjectKind::id)))]
     only: Vec<String>,
     /// Leave these kinds out.
-    #[arg(long, num_args = 1.., value_name = "KIND")]
+    #[arg(long, num_args = 1.., value_name = "KIND", value_parser = ids(purge::ProjectKind::ALL.map(purge::ProjectKind::id)))]
     skip: Vec<String>,
     /// Move to the trash instead of deleting.
     #[arg(long)]
@@ -138,22 +151,21 @@ struct StatusArgs {
 
 #[derive(Clone, Args)]
 struct SystemArgs {
-    /// Run only these tasks: pacman-cache, journal, coredumps.
-    #[arg(long, num_args = 1.., value_name = "ID")]
+    /// Run only these tasks.
+    #[arg(long, num_args = 1.., value_name = "ID", value_parser = ids(system::TaskId::ALL.map(system::TaskId::id)))]
     only: Vec<String>,
     /// Leave these tasks out.
-    #[arg(long, num_args = 1.., value_name = "ID")]
+    #[arg(long, num_args = 1.., value_name = "ID", value_parser = ids(system::TaskId::ALL.map(system::TaskId::id)))]
     skip: Vec<String>,
 }
 
 #[derive(Clone, Args)]
 struct OptimizeArgs {
-    /// Run only these tasks: pacman-orphans, apt-autoremove, dnf-autoremove,
-    /// zypper-unneeded.
-    #[arg(long, num_args = 1.., value_name = "ID")]
+    /// Run only these tasks.
+    #[arg(long, num_args = 1.., value_name = "ID", value_parser = ids(optimize::TaskId::ALL.map(optimize::TaskId::id)))]
     only: Vec<String>,
     /// Leave these tasks out.
-    #[arg(long, num_args = 1.., value_name = "ID")]
+    #[arg(long, num_args = 1.., value_name = "ID", value_parser = ids(optimize::TaskId::ALL.map(optimize::TaskId::id)))]
     skip: Vec<String>,
 }
 
@@ -245,6 +257,11 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    // CO-01: before startup, so even a broken config completes.
+    if let Some(Command::Completions(args)) = &cli.command {
+        print!("{}", completions::script(args.shell, Cli::command()));
+        return Ok(ExitCode::SUCCESS);
+    }
     // BN-02, BN-03: a bare `molt` only, never above a named command or JSON.
     if cli.command.is_none() && !cli.json {
         if let Some(banner) = molt::banner::for_terminal() {
@@ -267,6 +284,8 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         Some(Command::Optimize(args)) => run_optimize(cli, args, &startup),
         // HI-01: read-only, so a dry run is the same run.
         Some(Command::History(args)) => run_history(cli, args, &startup),
+        // Handled before startup (CO-01).
+        Some(Command::Completions(_)) => Ok(ExitCode::SUCCESS),
         // AN-09: read-only, so a dry run is the same run.
         Some(Command::Analyze(args)) => run_analyze(cli, args, &startup),
         // ST-01, ST-08: read-only, and always 0.

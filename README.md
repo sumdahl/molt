@@ -98,9 +98,19 @@ molt optimize --only pacman-orphans
 molt history --since 2026-10-01    # this month's removals
 ```
 
+### Shell completions
+
+`molt completions <shell>` prints a completion script for commands, flags and task ids. Put it where your shell looks:
+
+```sh
+molt completions bash > ~/.local/share/bash-completion/completions/molt
+molt completions zsh > ~/.zfunc/_molt     # with fpath+=(~/.zfunc) before compinit
+molt completions fish > ~/.config/fish/completions/molt.fish
+```
+
 ### Planned
 
-Shell completions, an interactive `molt` menu, self-update, and AUR, `.deb` and `cargo install` packages. See the Phase 5 milestone on GitHub.
+An interactive `molt` menu, self-update, and AUR, `.deb` and `cargo install` packages. See the Phase 5 milestone on GitHub.
 
 ## Options and configuration
 
