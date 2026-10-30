@@ -1,6 +1,6 @@
 # 003: Config and whitelist
 
-Status: Accepted
+Status: Implemented
 Prefix: CF
 
 ## Goal
@@ -41,15 +41,14 @@ A **config path** is `~/…` or an absolute path, with no `*`, `?`, `.` or `..` 
 ### Dry run by default
 - **CF-07** When `dry_run = true` in the config, or the environment has `MOLT_DRY_RUN=1`, every command runs as a dry run (P-05) unless `--live` is given.
   - `--dry-run` always means a dry run, whatever the config says.
-  - `--dry-run` with `--live` is a usage error (exit 2).
   - `MOLT_DRY_RUN` set to anything but `0` or `1` is an error (P-03).
-  - Output says when a run is a dry run because of the config or the environment, and how to act (`--live`).
+  - The decision records why a run is a dry run (flag, config or environment). The CLI (004) rejects `--dry-run` with `--live` as a usage error and tells the user when the config or environment made a run a dry run, and how to act (`--live`).
 
 ## Test strategy
 
 - Parse tests from strings for every error in CF-02 to CF-04 and CF-06.
 - Loading tests use a temp dir as `$XDG_CONFIG_HOME`; an unreadable file is a directory named `config.toml`, which fails even as root.
-- CF-07 is tested on the CLI in 004 (#3), where `--live` and `--dry-run` are parsed; here, the resolution logic is a pure function with a table test.
+- CF-07 is a pure function with a table test. Its CLI side is tested in 004 (#3).
 
 ## Decisions
 
