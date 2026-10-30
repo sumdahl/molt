@@ -1,6 +1,6 @@
 # 008: `molt purge`
 
-Status: Draft
+Status: Accepted
 Prefix: PG
 
 ## Goal
@@ -57,10 +57,7 @@ Prefix: PG
 ## Decisions
 
 - **molt deletes build folders itself, through safe delete.** Running `cargo clean` and the like would run project code (P-02 beats P-07 here).
-
-## Open questions
-
-1. **Kinds.** Is the table right? Add or drop any (for example `__pycache__`, `dist`, `.tox`, CMake `build`)? `dist` and a bare `build` are often hand-made, so they're left out on purpose.
-2. **Recent projects.** Leave out projects changed in the last 7 days (proposed)? Make it configurable now or later?
-3. **Git-tracked files.** Leave out a build folder that holds any tracked file (proposed), or only skip the tracked files inside it? Skipping the whole folder is simpler and safer.
-4. **No `purge_paths`.** Do nothing and say how to set them (proposed), or default to `~` with a depth limit?
+- **The kinds are the table.** `dist`, a bare `build`, `__pycache__`, `.tox` and CMake builds are left out; any of them can come later with its own review.
+- **Projects changed in the last 7 days are left out.** Not configurable yet.
+- **A build folder holding any Git-tracked file is left out whole.**
+- **No `purge_paths`, nothing to do.** molt never guesses where projects live.
