@@ -1,6 +1,6 @@
 # 012: `molt analyze`
 
-Status: Implemented (AN-01 to AN-17; #35 adds trashing)
+Status: Implemented
 Prefix: AN
 
 ## Goal
@@ -42,10 +42,22 @@ The browser is a full-screen view over the same walk. It's written in molt: raw 
 - **AN-11** While the walk runs, the screen shows a progress line (folders and bytes counted so far). `q` or Ctrl-C stops the walk and leaves.
 - **AN-12** The screen shows the current folder's path and total, then its entries largest first: size (`+` if partial), share of the folder, a bar, and the name. One entry is selected.
 - **AN-13** Keys: `j`/`k`/↓/↑ move, `g`/`G`/Home/End jump to the first or last entry, PgUp/PgDn move a screen, `l`/→/Enter open a folder, `h`/←/Backspace go up to the parent (never above the starting folder), `s` switches between size and name order, `r` measures the current folder again, `?` shows the keys, and `q` leaves.
-- **AN-14** The browser changes nothing. Trashing picked items is #35's.
+- **AN-14** The browser changes nothing, except through AN-18 to AN-24.
 - **AN-15** Leaving the browser in any way (`q`, Ctrl-C, an error, a panic) restores the terminal: cooked mode, the cursor shown, and the normal screen back.
 - **AN-16** The screen redraws to fit when the terminal is resized. Names too long for the width are shortened in the middle with `…`, and a narrow terminal drops the bar before the name. A terminal that reports no size (0 × 0) is drawn at 80 × 24.
 - **AN-17** Every folder of the walk is kept in memory, but a folder's files are read only when it's opened, so a home with millions of files fits in memory. A file whose hard-linked twin is elsewhere is shown at its own size there (AN-01 still holds for folder totals).
+
+### Trashing picked items (#35)
+
+The first and only way the browser changes anything. It goes through safe delete (P-01), in trash mode only, after the full dry run of exactly the picked items (P-14).
+
+- **AN-18** `Space` marks or unmarks the selected entry and moves down. Marked entries show a `*`, and the bottom line shows how many are marked and their total size. Marks stay while moving between folders.
+- **AN-19** Each mark records the entry as it is now (`Candidate::scan`: device, inode, type, mtime), so anything that changes before the trash step is skipped (SD-08, SD-10).
+- **AN-20** `d` trashes the marked entries, or the selected entry if none are marked. It first runs a safe-delete dry run of exactly those entries, in trash mode, and shows its full result on screen: each entry, its size, and what would happen to it, including any refused (`protected`, `whitelisted`) or skipped, with the reason.
+- **AN-21** Below that preview, molt asks "Move N items (SIZE) to the trash? [y/N]". Only `y` goes ahead. Any other key goes back to the browser with nothing changed and the marks kept. In a dry run (`--dry-run`, the config or `MOLT_DRY_RUN`, CF-07), the preview ends with "Dry run, so nothing moved" and the reason, and there is no question (P-05).
+- **AN-22** After `y`, one live safe-delete plan in trash mode runs over the same candidates. The screen then shows the result per entry (trashed, skipped or failed, with the reason), the marks are cleared, and the folders above the changed entries are measured again (as `r`).
+- **AN-23** Nothing is ever deleted permanently from the browser: there is no key for it, and the plan's mode is always trash (SD-11). An entry the trash can't take (`no-trash`) is reported and kept.
+- **AN-24** Every trashed entry is in the operation log (SD-15). A log that can't be opened stops the step before anything moves, and says so on screen.
 
 ## Test strategy
 
@@ -64,4 +76,8 @@ The browser is a full-screen view over the same walk. It's written in molt: raw 
 - **Folders in memory, files read on opening** (AN-17).
 - **Vim keys plus arrows** (AN-13).
 - **The size is checked on every key and every 200 ms** (the read timeout, in tenths of a second), since catching `SIGWINCH` needs a crate or unsafe code.
+- **`Space` marks, `d` trashes**, as in `ncdu` (AN-18, AN-20).
+- **Trash only.** No permanent delete from the browser (AN-23); emptying the trash is a separate, deliberate act.
+- **A plain `y`** after the full preview (AN-21).
+- **Trashing works wherever safe delete can trash**, inside `$HOME` or on another filesystem with a `.Trash-$uid` folder (SD-11).
 - **No new dependency.** The parallel walk uses standard library threads, and the browser (#34) will drive the terminal through `rustix`. molt keeps full control of its code (maintainer decision).

@@ -1298,22 +1298,25 @@ fn an_03_an_05_partial_exits_3_and_a_bad_path_exits_1() {
     assert!(stderr(&not_dir).contains("not a directory"));
 }
 
-#[test]
-fn an_10_an_13_an_15_the_browser_navigates_and_restores_the_terminal() {
-    if is_root() {
-        return eprintln!("skipped: molt refuses root (CL-07)");
-    }
+/// Runs `molt analyze <dir> <args>` in a pseudo-terminal under a timeout, typing each
+/// chunk of `keys` after a pause, and gives the exit code and all it wrote. `None` where
+/// script(1) or timeout(1) is missing.
+fn browse_tty(
+    home: &Home,
+    dir: &Path,
+    args: &str,
+    keys: &[&str],
+    env: &[(&str, &str)],
+) -> Option<(Option<i32>, String)> {
     let (script, timeout) = (Path::new("/usr/bin/script"), Path::new("/usr/bin/timeout"));
     if !script.exists() || !timeout.exists() {
-        return eprintln!("skipped: script(1) or timeout(1) isn't installed");
+        return None;
     }
-    let home = Home::new();
-    home.file("data/big/inner-file", 256 * 1024);
-    home.file("data/small", 4096);
-    let data = home.path.join("data");
-    let before = snapshot(&home.path);
-
-    let command = format!("{} analyze {}", env!("CARGO_BIN_EXE_molt"), data.display());
+    let command = format!(
+        "{} analyze {} {args}",
+        env!("CARGO_BIN_EXE_molt"),
+        dir.display()
+    );
     // A stuck browser or script(1) must fail the test, not hang it.
     let mut child = Command::new(timeout)
         .arg("20")
@@ -1322,32 +1325,140 @@ fn an_10_an_13_an_15_the_browser_navigates_and_restores_the_terminal() {
         .env_clear()
         .env("HOME", &home.path)
         .env("TERM", "xterm")
+        .envs(env.iter().copied())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
         .unwrap();
-    // Keys typed before molt switches to raw mode would wait for a newline.
-    std::thread::sleep(std::time::Duration::from_millis(500));
     use std::io::Write;
     let mut stdin = child.stdin.take().unwrap();
-    stdin.write_all(b"l").unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    stdin.write_all(b"hq").unwrap();
+    for chunk in keys {
+        // Keys typed before molt switches to raw mode, or mid-measure, would be lost.
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        stdin.write_all(chunk.as_bytes()).unwrap();
+    }
     // Some script(1) versions wait for their stdin to close before exiting.
     drop(stdin);
     let out = child.wait_with_output().unwrap();
-    let screen = String::from_utf8_lossy(&out.stdout);
+    Some((
+        out.status.code(),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+    ))
+}
 
-    assert_eq!(out.status.code(), Some(0), "{screen:?}");
+/// AN-15: the last thing written puts the terminal back.
+fn restored(screen: &str) -> bool {
+    screen.trim_end().ends_with("\x1b[?25h\x1b[?1049l")
+}
+
+#[test]
+fn an_10_an_13_an_15_the_browser_navigates_and_restores_the_terminal() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.file("data/big/inner-file", 256 * 1024);
+    home.file("data/small", 4096);
+    let data = home.path.join("data");
+    let before = snapshot(&home.path);
+
+    let Some((code, screen)) = browse_tty(&home, &data, "", &["l", "hq"], &[]) else {
+        return eprintln!("skipped: script(1) or timeout(1) isn't installed");
+    };
+
+    assert_eq!(code, Some(0), "{screen:?}");
     assert!(
         screen.contains("\x1b[?1049h"),
         "the alternate screen: {screen:?}"
     );
     assert!(screen.contains("big/"), "{screen:?}");
     assert!(screen.contains("inner-file"), "opened big/: {screen:?}");
+    assert!(restored(&screen), "{screen:?}");
+    assert_eq!(snapshot(&home.path), before);
+}
+
+#[test]
+fn an_20_an_21_an_22_a_marked_folder_goes_to_the_trash_after_the_preview_and_y() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let inside = home.file("data/big/inner-file", 256 * 1024);
+    let small = home.file("data/small", 4096);
+    let data = home.path.join("data");
+
+    // Mark big/ (the largest, so selected first), trash, say yes, close the result, quit.
+    let Some((code, screen)) = browse_tty(&home, &data, "", &[" ", "d", "y", "x", "q"], &[]) else {
+        return eprintln!("skipped: script(1) or timeout(1) isn't installed");
+    };
+
+    assert_eq!(code, Some(0), "{screen:?}");
+    assert!(screen.contains("1 marked"), "{screen:?}");
     assert!(
-        screen.trim_end().ends_with("\x1b[?25h\x1b[?1049l"),
-        "the terminal is restored last: {screen:?}"
+        screen.contains("Preview. Nothing has changed yet"),
+        "{screen:?}"
     );
+    assert!(screen.contains("would-trash"), "{screen:?}");
+    assert!(screen.contains("Move 1 items"), "{screen:?}");
+    assert!(screen.contains("trashed"), "{screen:?}");
+    assert!(!exists(&inside));
+    assert!(exists(
+        &home.path.join(".local/share/Trash/files/big/inner-file")
+    ));
+    assert!(exists(&small), "only the marked item moved");
+    assert!(restored(&screen), "{screen:?}");
+    // AN-24
+    let log = fs::read_to_string(home.path.join(".local/state/molt/operations.log")).unwrap();
+    assert!(log.contains("data/big"), "{log}");
+}
+
+#[test]
+fn an_21_p_05_no_or_a_dry_run_changes_nothing() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    home.file("data/big/inner-file", 256 * 1024);
+    let data = home.path.join("data");
+    let before = snapshot(&home.path);
+
+    let Some((code, screen)) = browse_tty(&home, &data, "", &["d", "n", "q"], &[]) else {
+        return eprintln!("skipped: script(1) or timeout(1) isn't installed");
+    };
+    assert_eq!(code, Some(0), "{screen:?}");
+    assert!(screen.contains("Move 1 items"), "{screen:?}");
+    assert_eq!(snapshot(&home.path), before, "no");
+
+    for (args, env) in [("--dry-run", &[][..]), ("", &[("MOLT_DRY_RUN", "1")][..])] {
+        let (code, screen) = browse_tty(&home, &data, args, &["d", "y", "x", "q"], env).unwrap();
+        assert_eq!(code, Some(0), "{screen:?}");
+        assert!(screen.contains("would-trash"), "{screen:?}");
+        assert!(screen.contains("Dry run, so nothing moved"), "{screen:?}");
+        assert!(!screen.contains("Move 1 items"), "no question: {screen:?}");
+        assert_eq!(snapshot(&home.path), before, "{args} {env:?}");
+    }
+}
+
+#[test]
+fn an_20_an_23_protected_items_are_refused_in_the_preview() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let key = home.file(".ssh/id_ed25519", 400 * 1024);
+    let before = snapshot(&home.path);
+
+    // ~/.ssh is the largest entry in the home, so it's selected.
+    let Some((code, screen)) = browse_tty(&home, &home.path, "", &["d", "y", "q"], &[]) else {
+        return eprintln!("skipped: script(1) or timeout(1) isn't installed");
+    };
+
+    assert_eq!(code, Some(0), "{screen:?}");
+    assert!(screen.contains("protected"), "{screen:?}");
+    assert!(
+        screen.contains("Nothing here can be moved to the trash"),
+        "{screen:?}"
+    );
+    assert!(exists(&key));
     assert_eq!(snapshot(&home.path), before);
 }
