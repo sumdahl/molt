@@ -157,7 +157,7 @@ fn dpkg_owner(output: &str) -> Option<&str> {
 }
 
 /// A single package name that can't be read as an option or as several names.
-fn plain(package: &str) -> bool {
+pub(crate) fn plain(package: &str) -> bool {
     !package.is_empty()
         && !package.starts_with('-')
         && package

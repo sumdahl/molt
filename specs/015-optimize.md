@@ -1,6 +1,6 @@
 # 015: `molt optimize`
 
-Status: Accepted (#48)
+Status: Implemented (OP-01 to OP-08)
 Prefix: OP
 
 ## Goal
@@ -29,7 +29,7 @@ Prefix: OP
 |---|---|---|---|
 | `pacman-orphans` | `pacman` | `pacman -Qdtq` (exit 1 with no output means none) | `pacman -Rns <listed packages>` |
 | `apt-autoremove` | `apt-get` | `apt-get -s autoremove` (the `Remv <pkg>` lines) | `apt-get autoremove` |
-| `dnf-autoremove` | `dnf` | `dnf repoquery --unneeded --qf %{name}` | `dnf remove <listed packages>` |
+| `dnf-autoremove` | `dnf` | `dnf repoquery --unneeded --qf "%{name} "` (a space after each name, as dnf 4 adds a newline and dnf 5 doesn't) | `dnf remove <listed packages>` |
 | `zypper-unneeded` | `zypper` | `zypper --quiet packages --unneeded` (the name column) | `zypper remove --clean-deps <listed packages>` |
 
 - `pacman -Qdtq` lists packages installed as dependencies that nothing needs. `-Rns` also removes their own dependencies that would then be orphans, and pacman lists those before it asks.

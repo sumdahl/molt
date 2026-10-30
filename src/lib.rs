@@ -5,6 +5,7 @@ pub mod analyze;
 pub mod clean;
 pub mod config;
 pub mod installer;
+pub mod optimize;
 pub mod processes;
 pub mod purge;
 pub mod rules;

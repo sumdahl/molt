@@ -4,7 +4,7 @@ Reclaim disk space on Linux, safely.
 
 molt finds what is filling your disk (caches, build artifacts, old packages, installers, leftovers from removed apps), shows you exactly what it would remove, and removes only what it can prove is safe to remove. It works on any Linux distribution. Distro-specific steps turn on only where their tools are installed; pacman is the first, with apt, dnf, zypper, Flatpak and Snap planned.
 
-> **Status: v0.1.0, early.** `molt scan`, `molt clean`, `molt purge`, `molt installer`, `molt uninstall`, `molt system`, `molt analyze` and `molt status` work. Other commands are being built spec-first.
+> **Status: v0.1.0, early.** `molt scan`, `molt clean`, `molt purge`, `molt installer`, `molt uninstall`, `molt system`, `molt optimize`, `molt analyze` and `molt status` work. Other commands are being built spec-first.
 
 ## Commands
 
@@ -85,11 +85,18 @@ molt system --dry-run              # sizes and the exact sudo commands
 molt system --only journal         # just one task
 ```
 
+`molt optimize` removes packages nothing needs: pacman's orphans (`pacman -Qdtq`), `apt-get autoremove`, dnf's and zypper's unneeded packages. The preview lists every package, found without root, and the exact `sudo` command, which names exactly those packages. The package manager still shows its own list and asks. A dry run never runs `sudo`.
+
+```sh
+molt optimize --dry-run            # what nothing needs any more
+molt optimize --only pacman-orphans
+```
+
 ### Planned
 
 | Command | What it does |
 |---|---|
-| `molt optimize` | Safe maintenance: orphan packages, TRIM, font cache, failed units |
+| `molt optimize` (more) | TRIM, font cache, DNS flush, failed units, SMART health |
 | `molt history` | Show what molt has removed |
 
 ## Options and configuration
