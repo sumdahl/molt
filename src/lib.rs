@@ -5,6 +5,7 @@ pub mod analyze;
 pub mod banner;
 pub mod clean;
 pub mod config;
+pub mod history;
 pub mod installer;
 pub mod optimize;
 pub mod processes;

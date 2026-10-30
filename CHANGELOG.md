@@ -16,6 +16,8 @@ The release workflow publishes the section matching the pushed tag as the GitHub
 
 - A green ASCII-art molt banner at the top of `molt --help` and a bare `molt`, on a terminal only. Never when piped, with `--json`, with `--version`, or above a named command. `NO_COLOR` or `TERM=dumb` prints it plain. Spec: `specs/016-banner.md`.
 
+- `molt history`: what molt trashed, deleted and ran, newest first, read from the operation log without writing anything. Local times, sizes, exit statuses of failed commands, how many went to the trash. `--limit`, `--all`, `--since`, `--json`. An unreadable line is skipped and counted (exit 3). Spec: `specs/017-history.md`.
+
 ### Changed
 - Releases are signed: the release workflow builds only from a tag signed with a maintainer's SSH key, listed in `.github/allowed_signers`. Check a tag with `git -c gpg.ssh.allowedSignersFile=.github/allowed_signers verify-tag vX.Y.Z`.
 

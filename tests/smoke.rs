@@ -2385,3 +2385,116 @@ fn bn_02_bn_04_the_banner_tops_help_on_a_terminal_in_green() {
     let (_, scan) = molt_pty(&home, "scan", &[], &[]).unwrap();
     assert!(!scan.contains(BANNER_ART), "a named subcommand: {scan}");
 }
+
+/// A temp home whose log has a real `molt installer --yes` run, then two command
+/// entries and a corrupt line appended. Gives the home and the log's path.
+fn history_home() -> (Home, PathBuf) {
+    let (home, ..) = installer_home();
+    let out = home.molt(&["installer", "--yes"], &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let log = home.path.join(".local/state/molt/operations.log");
+    let mut text = fs::read_to_string(&log).unwrap();
+    text.push_str(
+        "{\"time\":\"2099-01-01T00:00:00Z\",\"command\":[\"/usr/bin/sudo\",\"--\",\"/usr/bin/fstrim\",\"--all\"],\"exit\":1,\"bytes\":0}\n\
+         this line is broken\n",
+    );
+    fs::write(&log, text).unwrap();
+    (home, log)
+}
+
+#[test]
+fn hi_01_hi_02_hi_05_hi_06_history_reads_newest_first_and_changes_nothing() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let (home, _) = history_home();
+    let before = snapshot(&home.path);
+
+    for args in [&["history"][..], &["history", "--dry-run"][..]] {
+        let out = home.molt(args, &[("TZ", "UTC")]);
+        assert_eq!(
+            out.status.code(),
+            Some(3),
+            "a bad line makes it partial: {}",
+            stderr(&out)
+        );
+        let text = stdout(&out);
+        let first = text.lines().next().unwrap();
+        assert!(first.starts_with("2099-01-01 00:00  ran"), "{text}");
+        assert!(first.ends_with("/usr/bin/fstrim --all  (exit 1)"), "{text}");
+        assert_eq!(text.matches("  trashed  ").count(), 6, "{text}");
+        assert!(text.contains("6 went to the trash"), "{text}");
+        assert!(
+            text.contains("1 line in the log couldn't be read"),
+            "{text}"
+        );
+    }
+    assert_eq!(snapshot(&home.path), before);
+}
+
+#[test]
+fn hi_03_hi_04_limit_since_and_bad_dates() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let (home, _) = history_home();
+
+    let one = home.molt(&["history", "--limit", "1"], &[]);
+    let text = stdout(&one);
+    assert_eq!(
+        text.lines()
+            .filter(|l| l.contains("  ran  ") || l.contains("  trashed  "))
+            .count(),
+        1,
+        "{text}"
+    );
+    assert!(text.contains("6 older entries not shown"), "{text}");
+
+    let future = home.molt(&["history", "--since", "2098-12-31"], &[("TZ", "UTC")]);
+    assert_eq!(
+        stdout(&future).matches("  trashed  ").count(),
+        0,
+        "{}",
+        stdout(&future)
+    );
+    assert!(stdout(&future).contains("fstrim"), "{}", stdout(&future));
+
+    for bad in ["2026-13-01", "yesterday"] {
+        assert_eq!(
+            home.molt(&["history", "--since", bad], &[]).status.code(),
+            Some(2),
+            "{bad}"
+        );
+    }
+    assert_eq!(
+        home.molt(&["history", "--limit", "0"], &[]).status.code(),
+        Some(2)
+    );
+}
+
+#[test]
+fn hi_06_hi_07_json_and_an_empty_history() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let (home, _) = history_home();
+    let out = home.molt(&["history", "--json", "--limit", "2"], &[]);
+    assert_eq!(out.status.code(), Some(3));
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["entries"].as_array().unwrap().len(), 2, "{json}");
+    assert_eq!(json["entries"][0]["exit"], 1, "{json}");
+    assert_eq!(json["entries"][1]["outcome"], "trashed", "{json}");
+    assert_eq!(json["skipped_lines"], 1);
+    assert_eq!(json["left_out"], 5);
+
+    let empty = Home::new();
+    let before = snapshot(&empty.path);
+    let out = empty.molt(&["history"], &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(
+        stdout(&out).contains("Nothing in the history yet"),
+        "{}",
+        stdout(&out)
+    );
+    assert_eq!(snapshot(&empty.path), before, "no state folder is created");
+}
