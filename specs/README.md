@@ -49,4 +49,4 @@ What this spec deliberately leaves out.
 | # | Spec | Prefix | Status |
 |---|---|---|---|
 | 000 | [Principles](000-principles.md) | P | Accepted |
-| 001 | [Safe delete](001-safe-delete.md) | SD | Accepted |
+| 001 | [Safe delete](001-safe-delete.md) | SD | Implemented |

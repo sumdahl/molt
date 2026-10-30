@@ -17,6 +17,7 @@ use rustix::fs::{
 pub use rustix::io::Errno;
 use rustix::path::Arg;
 
+mod oplog;
 #[cfg(test)]
 mod tests;
 mod trash;
@@ -118,6 +119,8 @@ pub struct Context {
     pub xdg_dirs: Vec<PathBuf>,
     /// Paths the user's config says to never touch (P-03, SD-03).
     pub whitelist: Vec<PathBuf>,
+    /// Where to append the operation log (P-09). `None` when disabled (`MOLT_NO_OPLOG=1`).
+    pub oplog: Option<PathBuf>,
     pub euid: Uid,
 }
 
@@ -131,6 +134,8 @@ pub enum Reason {
     ChangedSinceScan,
     ModifiedSinceScan,
     NoTrash,
+    /// SD-15: an earlier operation-log write failed, so the plan stopped.
+    LogFailed,
 }
 
 /// What happened to one candidate. `bytes` are on-disk bytes freed, or for the trash, freed
@@ -152,12 +157,14 @@ pub struct Report {
 }
 
 impl Report {
-    /// P-13: 3 when any candidate failed, otherwise 0.
+    /// P-13: 3 when any candidate failed or the plan stopped early, otherwise 0.
     pub fn exit_code(&self) -> i32 {
-        let failed = self
-            .results
-            .iter()
-            .any(|(_, outcome)| matches!(outcome, Outcome::Failed { .. }));
+        let failed = self.results.iter().any(|(_, outcome)| {
+            matches!(
+                outcome,
+                Outcome::Failed { .. } | Outcome::Skipped(Reason::LogFailed)
+            )
+        });
         if failed { 3 } else { 0 }
     }
 }
@@ -167,12 +174,15 @@ impl Report {
 pub enum PlanRefused {
     /// SD-16: running as root without an explicit system step.
     Root,
+    /// SD-15: the operation log can't be opened.
+    OpLog(Errno),
 }
 
 impl fmt::Display for PlanRefused {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Root => f.write_str("refusing to run as root without an explicit system step"),
+            Self::OpLog(errno) => write!(f, "can't open the operation log: {errno}"),
         }
     }
 }
@@ -180,13 +190,20 @@ impl fmt::Display for PlanRefused {
 impl std::error::Error for PlanRefused {}
 
 /// Carries out `plan`, one candidate at a time. A failure on one candidate never stops
-/// the others (SD-14).
+/// the others (SD-14); only a failed log write does (SD-15).
 pub fn execute(plan: &Plan, ctx: &Context) -> Result<Report, PlanRefused> {
     #[cfg(test)]
     tests::assert_sandboxed(plan);
     if ctx.euid.is_root() && plan.privilege != Privilege::System {
         return Err(PlanRefused::Root);
     }
+    let mut oplog = match (&ctx.oplog, plan.execution) {
+        (Some(path), Execution::Live) => Some(
+            oplog::OpLog::open(path)
+                .map_err(|e| PlanRefused::OpLog(Errno::from_io_error(&e).unwrap_or(Errno::IO)))?,
+        ),
+        _ => None,
+    };
     let guard = Guard::new(ctx);
     let mut remover = Remover {
         mode: plan.mode,
@@ -194,11 +211,20 @@ pub fn execute(plan: &Plan, ctx: &Context) -> Result<Report, PlanRefused> {
         bins: trash::Bins::new(&ctx.data_home, ctx.euid),
         links: HashMap::new(),
     };
-    let results = plan
-        .candidates
-        .iter()
-        .map(|candidate| (candidate.path.clone(), remover.run(candidate, &guard)))
-        .collect();
+    let mut log_failed = false;
+    let mut results = Vec::with_capacity(plan.candidates.len());
+    for candidate in &plan.candidates {
+        let outcome = if log_failed {
+            Outcome::Skipped(Reason::LogFailed)
+        } else {
+            let outcome = remover.run(candidate, &guard);
+            if let Some(log) = &mut oplog {
+                log_failed = log.record(plan.mode, &candidate.path, &outcome).is_err();
+            }
+            outcome
+        };
+        results.push((candidate.path.clone(), outcome));
+    }
     Ok(Report { results })
 }
 

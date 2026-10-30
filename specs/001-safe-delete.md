@@ -1,6 +1,6 @@
 # 001: Safe delete
 
-Status: Accepted
+Status: Implemented
 Prefix: SD
 
 ## Goal
@@ -49,7 +49,10 @@ A scan produces **candidates**. Each candidate holds the path plus the identity 
 ### Reporting
 - **SD-13** Bytes freed are the sum of `st_blocks × 512` over the removed inodes. Each `(st_dev, st_ino)` with `st_nlink > 1` is counted once, and only when its last link inside the plan is removed.
 - **SD-14** A failure on one candidate (EACCES, EBUSY, EROFS…) does not stop the plan. Each failure is reported with its errno. If any candidate failed, the exit code is 3 (P-13).
-- **SD-15** Each removed or trashed candidate is appended to the operation log (P-09) with timestamp, mode, path, bytes, and outcome. The log entry is written after the removal succeeds.
+- **SD-15** Each candidate that was removed, trashed, or partly removed before failing is appended to the operation log (P-09) with timestamp, mode, path, bytes, and outcome. The log entry is written after the removal.
+  - In a live run, the log is opened before anything is touched. If it can't be opened, the plan is refused as a whole.
+  - If writing an entry fails, the plan stops. Every remaining candidate is skipped with reason `log-failed`, and the exit code is 3 (P-13).
+  - A dry run writes nothing to the log (SD-12).
 
 ### Privilege
 - **SD-16** If the effective uid is 0 and the plan was not created by an explicit system step (P-04), the plan is refused as a whole before anything is touched.

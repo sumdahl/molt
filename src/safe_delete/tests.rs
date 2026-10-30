@@ -80,6 +80,7 @@ impl Sandbox {
                 .map(|d| home.join(d))
                 .to_vec(),
             whitelist: whitelist.iter().map(|w| home.join(w)).collect(),
+            oplog: Some(home.join(".local/state/molt/operations.log")),
             home: home.clone(),
             // The owner of a fresh temp dir is the effective uid (root inside a test namespace).
             euid: Uid::from_raw(fs::metadata(&root).unwrap().uid()),
@@ -631,6 +632,79 @@ fn sd_14_one_failure_does_not_stop_the_plan_and_exits_3() {
     assert!(removed()(&report.results[1].1));
     assert_eq!(report.exit_code(), 3);
     assert!(exists(&locked));
+}
+
+#[test]
+fn sd_15_each_change_is_logged_as_one_json_line() {
+    let sb = Sandbox::new();
+    let gone = sb.file("cache/gone");
+    let trashed = sb.file("Downloads/old.iso");
+    let kept = sb.file(".ssh/id_ed25519");
+    sb.run(&[&gone, &kept], Execution::Live);
+    sb.run_with(&[&trashed], Mode::Trash, Execution::Live);
+
+    let log = fs::read_to_string(sb.ctx.oplog.as_ref().unwrap()).unwrap();
+    let entries: Vec<serde_json::Value> = log
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+
+    assert_eq!(entries.len(), 2, "{log}");
+    for (entry, (path, mode, outcome)) in entries.iter().zip([
+        (&gone, "permanent", "removed"),
+        (&trashed, "trash", "trashed"),
+    ]) {
+        assert_eq!(entry["path"], path.to_str().unwrap());
+        assert_eq!(entry["mode"], mode);
+        assert_eq!(entry["outcome"], outcome);
+        assert_eq!(entry["bytes"], 64 * 1024);
+        assert!(
+            entry["time"]
+                .as_str()
+                .unwrap()
+                .parse::<jiff::Timestamp>()
+                .is_ok()
+        );
+    }
+}
+
+#[test]
+fn sd_15_sd_12_a_dry_run_writes_no_log() {
+    let sb = Sandbox::new();
+    let file = sb.file("cache/f");
+
+    sb.run(&[&file], Execution::DryRun);
+
+    assert!(!exists(sb.ctx.oplog.as_ref().unwrap()));
+}
+
+#[test]
+fn sd_15_an_unopenable_log_refuses_the_plan_before_anything_is_touched() {
+    let mut sb = Sandbox::new();
+    let file = sb.file("cache/f");
+    // A log whose parent is a file can't be created.
+    sb.ctx.oplog = Some(file.join("operations.log"));
+
+    let refused = execute(&sb.plan(&[&file], Execution::Live), &sb.ctx).unwrap_err();
+
+    assert!(matches!(refused, PlanRefused::OpLog(_)), "{refused:?}");
+    assert!(exists(&file));
+}
+
+#[test]
+fn sd_15_a_failed_log_write_stops_the_plan() {
+    let mut sb = Sandbox::new();
+    let first = sb.file("cache/first");
+    let second = sb.file("cache/second");
+    // Every write to /dev/full fails with ENOSPC.
+    sb.ctx.oplog = Some(PathBuf::from("/dev/full"));
+
+    let report = execute(&sb.plan(&[&first, &second], Execution::Live), &sb.ctx).unwrap();
+
+    assert!(removed()(&report.results[0].1));
+    assert_eq!(report.results[1].1, Outcome::Skipped(Reason::LogFailed));
+    assert!(exists(&second));
+    assert_eq!(report.exit_code(), 3);
 }
 
 // Privilege
