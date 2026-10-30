@@ -1111,3 +1111,118 @@ fn pg_08_kinds_are_picked_and_unknown_kinds_refused() {
         &home.path.join(".local/share/Trash/files/target/debug/app")
     ));
 }
+
+/// An old installer of each type in Downloads or Desktop, plus what must stay: a folder
+/// named like one, a symlink, a new file, and one in a subfolder.
+fn installer_home() -> (Home, Vec<PathBuf>, Vec<PathBuf>) {
+    let home = Home::new();
+    let old = [
+        "Downloads/a.deb",
+        "Downloads/b.rpm",
+        "Downloads/c-1-x86_64.pkg.tar.zst",
+        "Desktop/D.AppImage",
+        "Downloads/os.iso",
+        "Downloads/driver.run",
+    ];
+    let old: Vec<PathBuf> = old
+        .iter()
+        .map(|rel| {
+            let path = home.file(rel, 4096);
+            backdate(&home, rel);
+            path
+        })
+        .collect();
+    let folder = home.file("Downloads/folder.iso/inside", 10);
+    backdate(&home, "Downloads/folder.iso");
+    let link = home.path.join("Downloads/link.deb");
+    std::os::unix::fs::symlink(&old[0], &link).unwrap();
+    let new = home.file("Downloads/new.iso", 4096);
+    let nested = home.file("Downloads/sub/e.deb", 4096);
+    backdate(&home, "Downloads/sub/e.deb");
+    (home, old, vec![folder, link, new, nested])
+}
+
+#[test]
+fn in_01_scan_and_clean_never_see_installers() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let (home, old, _) = installer_home();
+
+    let (_, report) = home.scan_json();
+    assert!(!report.to_string().contains("installer-"), "{report}");
+    let out = home.clean(&["--yes"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(old.iter().all(|path| exists(path)));
+}
+
+#[test]
+fn in_05_p_05_dry_run_and_no_change_nothing() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let (home, ..) = installer_home();
+    let before = snapshot(&home.path);
+
+    let dry = home.molt(&["installer", "--dry-run"], &[]);
+    assert!(dry.status.success(), "{}", stderr(&dry));
+    let text = stdout(&dry);
+    assert!(text.contains("Installers"), "{text}");
+    assert!(text.contains("(to trash)"), "{text}");
+    assert!(text.contains("with `molt installer`"), "{text}");
+    assert!(
+        text.contains("Left out 1 installers: changed in the last 14 days"),
+        "{text}"
+    );
+    assert_eq!(snapshot(&home.path), before);
+
+    let piped = home.molt(&["installer"], &[]);
+    assert_eq!(piped.status.code(), Some(1), "no terminal needs --yes");
+    assert_eq!(snapshot(&home.path), before);
+}
+
+#[test]
+fn in_02_in_03_in_04_yes_trashes_only_old_files() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let (home, old, kept) = installer_home();
+
+    let out = home.molt(&["installer", "--yes"], &[]);
+    assert!(out.status.success(), "{}\n{}", stdout(&out), stderr(&out));
+    for path in &old {
+        assert!(!exists(path), "{}", path.display());
+        let name = path.file_name().unwrap();
+        assert!(exists(
+            &home.path.join(".local/share/Trash/files").join(name)
+        ));
+    }
+    for path in &kept {
+        assert!(exists(path), "{}", path.display());
+    }
+}
+
+#[test]
+fn in_01_in_04_rules_are_picked_and_permanent_deletes() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let (home, old, _) = installer_home();
+
+    let typo = home.molt(&["installer", "--only", "deb", "--yes"], &[]);
+    assert_eq!(typo.status.code(), Some(2));
+    let out = home.molt(
+        &[
+            "installer",
+            "--only",
+            "installer-iso",
+            "--permanent",
+            "--yes",
+        ],
+        &[],
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(!exists(&old[4]));
+    assert!(!exists(&home.path.join(".local/share/Trash/files/os.iso")));
+    assert!(exists(&old[0]), "only the ISO rule ran");
+}

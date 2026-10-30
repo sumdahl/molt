@@ -275,6 +275,7 @@ fn category_label(category: Category) -> &'static str {
         Category::Apps => "Apps",
         Category::SystemUser => "System (your files)",
         Category::Trash => "Trash",
+        Category::Installers => "Installers",
     }
 }
 

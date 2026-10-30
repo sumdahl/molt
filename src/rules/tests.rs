@@ -376,6 +376,36 @@ fn re_09_glob_matching_edge_cases() {
 
 /// For each built-in rule: paths under home it must match, and siblings it must not.
 const BUILT_IN_LAYOUT: &[(&str, &[&str], &[&str])] = &[
+    (
+        "installer-deb",
+        &["Downloads/a.deb", "Desktop/b.deb"],
+        &[
+            "Downloads/a.deb.part",
+            "Documents/c.deb",
+            "Downloads/sub/d.deb",
+        ],
+    ),
+    (
+        "installer-rpm",
+        &["Downloads/a.rpm"],
+        &["Downloads/a.rpmnew"],
+    ),
+    (
+        "installer-pacman",
+        &["Downloads/a-1-x86_64.pkg.tar.zst", "Desktop/b.pkg.tar.xz"],
+        &["Downloads/c.tar.zst"],
+    ),
+    (
+        "installer-appimage",
+        &["Downloads/A.AppImage", "Desktop/b.appimage"],
+        &["Downloads/A.AppImage.zsync"],
+    ),
+    (
+        "installer-iso",
+        &["Downloads/os.iso"],
+        &["Downloads/disk.img"],
+    ),
+    ("installer-run", &["Desktop/driver.run"], &["Downloads/run"]),
     ("npm-cache", &[".npm/_cacache"], &[".npm/_logs"]),
     (
         "pnpm-store",
@@ -515,7 +545,8 @@ fn br_01_br_05_each_built_in_rule_matches_exactly_its_cache() {
 fn br_02_rules_name_the_processes_that_own_their_data() {
     for rule in load(Path::new("/nonexistent")).unwrap() {
         // Thumbnails are written by many programs, and a missing one is just redrawn.
-        if rule.id.0 != "thumbnails" {
+        // Downloaded installers aren't data any program keeps open (009).
+        if rule.id.0 != "thumbnails" && rule.category != Category::Installers {
             assert!(!rule.processes.is_empty(), "{}", rule.id);
         }
     }

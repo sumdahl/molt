@@ -27,6 +27,8 @@ pub enum Category {
     Apps,
     SystemUser,
     Trash,
+    /// 009: only `molt installer` uses these rules.
+    Installers,
 }
 
 /// What kind of data a rule finds. Decides the default mode (000 Decisions).
@@ -205,8 +207,10 @@ pub enum SkipReason {
     Symlink,
     /// RE-09: a directory on the way couldn't be listed.
     Unreadable(Errno),
-    /// PG-04: a project being worked on.
+    /// PG-04, IN-03: being worked on, or about to be used.
     RecentlyChanged,
+    /// IN-02: a directory where only files are wanted.
+    NotAFile,
     /// PG-05: a build folder that may hold Git-tracked files.
     GitTracked,
 }
@@ -216,7 +220,8 @@ impl fmt::Display for SkipReason {
         match self {
             Self::Symlink => f.write_str("symlink"),
             Self::Unreadable(errno) => write!(f, "unreadable: {errno}"),
-            Self::RecentlyChanged => f.write_str("changed-in-the-last-7-days"),
+            Self::RecentlyChanged => f.write_str("recently-changed"),
+            Self::NotAFile => f.write_str("not-a-file"),
             Self::GitTracked => f.write_str("git-tracked"),
         }
     }

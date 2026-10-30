@@ -24,7 +24,7 @@ The first set of rules molt ships with: the caches that actually fill a Linux de
 
 ## The rules
 
-All are `regenerable`, so they're deleted permanently (000 Decisions). `$C` is `$XDG_CACHE_HOME`, `$D` is `$XDG_DATA_HOME`, `$K` is `$XDG_CONFIG_HOME`.
+All but the installers are `regenerable`, so they're deleted permanently (000 Decisions). `$C` is `$XDG_CACHE_HOME`, `$D` is `$XDG_DATA_HOME`, `$K` is `$XDG_CONFIG_HOME`.
 
 ### Developer tools
 
@@ -65,6 +65,10 @@ Only the cache folders, never the profile: bookmarks, passwords and sessions liv
 | `spotify-cache` | `$C/spotify` | `spotify` |
 | `discord-cache` | `$K/discord/Cache`, `$K/discord/Code Cache` | `Discord`, `discord` |
 | `slack-cache` | `$K/Slack/Cache`, `$K/Slack/Code Cache` | `slack` |
+
+### Installers
+
+The six `installer-*` rules are reviewed in [009](009-installer.md). They're `user-content`, in the `installers` category, and only `molt installer` uses them. They name no processes: no program keeps a downloaded installer open (BR-02).
 
 ### System (your files)
 
