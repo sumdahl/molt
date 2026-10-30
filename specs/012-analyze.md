@@ -1,6 +1,6 @@
 # 012: `molt analyze`
 
-Status: Implemented (AN-01 to AN-17); Draft (AN-18 to AN-24, #35)
+Status: Implemented (AN-01 to AN-17); Accepted (AN-18 to AN-24, #35)
 Prefix: AN
 
 ## Goal
@@ -67,13 +67,6 @@ The first and only way the browser changes anything. It goes through safe delete
 - P-05: a snapshot of the temp folder is unchanged after a run.
 - Browser: the key handling and the screen are pure functions from state and key to state, and from state and size to lines of text, so unit tests drive them without a terminal. One smoke test runs the browser under `script` (a pseudo-terminal), sends `j`, `l`, `h` and `q`, and checks the screen text and that the terminal is restored (the alternate-screen exit sequence is the last thing written).
 
-## Open questions (#35)
-
-1. **Keys.** `Space` to mark and `d` to trash (proposed, as in ncdu)?
-2. **Trash only.** No permanent delete from the browser at all (proposed)? Someone who wants it can trash, then empty the trash.
-3. **The question.** A plain `y` after the full preview (proposed), or type the item count, for big selections?
-4. **Outside your home.** Browsing `/` or `/mnt/data` works, but trashing there needs a `.Trash-$uid` folder that molt can create on that filesystem (SD-11). Allow it as safe delete does (proposed), or only allow trashing inside `$HOME`?
-
 ## Decisions
 
 - **The current directory by default**, like `du` and `ncdu`.
@@ -83,4 +76,8 @@ The first and only way the browser changes anything. It goes through safe delete
 - **Folders in memory, files read on opening** (AN-17).
 - **Vim keys plus arrows** (AN-13).
 - **The size is checked on every key and every 200 ms** (the read timeout, in tenths of a second), since catching `SIGWINCH` needs a crate or unsafe code.
+- **`Space` marks, `d` trashes**, as in `ncdu` (AN-18, AN-20).
+- **Trash only.** No permanent delete from the browser (AN-23); emptying the trash is a separate, deliberate act.
+- **A plain `y`** after the full preview (AN-21).
+- **Trashing works wherever safe delete can trash**, inside `$HOME` or on another filesystem with a `.Trash-$uid` folder (SD-11).
 - **No new dependency.** The parallel walk uses standard library threads, and the browser (#34) will drive the terminal through `rustix`. molt keeps full control of its code (maintainer decision).

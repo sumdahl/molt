@@ -60,4 +60,4 @@ What this spec deliberately leaves out.
 | 009 | [`molt installer`](009-installer.md) | IN | Implemented |
 | 010 | [Built-in rules](010-built-in-rules.md) | BR | Implemented |
 | 011 | [Locked folders](011-locked-folders.md) | LF | Implemented |
-| 012 | [`molt analyze`](012-analyze.md) | AN | Implemented (AN-01..17); Draft (AN-18..24) |
+| 012 | [`molt analyze`](012-analyze.md) | AN | Implemented (AN-01..17); Accepted (AN-18..24) |
