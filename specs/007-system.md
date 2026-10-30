@@ -1,6 +1,6 @@
 # 007: `molt system`
 
-Status: Draft
+Status: Accepted
 Prefix: SY
 
 ## Goal
@@ -66,9 +66,9 @@ Prefix: SY
 - SY-08: a fake tool that exits 1 makes its task failed, the next task still runs, and molt exits 3.
 - The size of `/var/...` folders comes from a path that tests point at a temp folder (a test-build override, as the sandbox tripwire does), so no test reads the real system.
 
-## Open questions
+## Decisions
 
-1. **Command name.** `molt system` (proposed), or a `--system` flag on `clean`? A separate command keeps `sudo` out of `clean` entirely.
-2. **pacman limits.** Keep two versions (`-rk2`) and drop uninstalled packages (`-ruk0`)? Or keep three (`-rk3`, the `paccache` default)?
-3. **Journal limit.** 500 MiB (proposed), or a time limit (`--vacuum-time=2weeks`)?
-4. **Coredumps.** Apply the system's own age rule through `systemd-tmpfiles` (proposed: nothing new is decided by molt), or delete all of them? Deleting all would need molt to delete as root, which this spec avoids.
+- **A separate command.** `sudo` never appears in `clean`.
+- **pacman keeps two versions** of installed packages (`-rk2`) and drops uninstalled ones (`-ruk0`).
+- **The journal is trimmed to 500 MiB.**
+- **Coredumps follow the system's own age rule** through `systemd-tmpfiles`. molt decides nothing about them and deletes nothing as root.
