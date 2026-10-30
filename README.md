@@ -85,7 +85,7 @@ molt system --dry-run              # sizes and the exact sudo commands
 molt system --only journal         # just one task
 ```
 
-`molt optimize` removes packages nothing needs: pacman's orphans (`pacman -Qdtq`), `apt-get autoremove`, dnf's and zypper's unneeded packages. The preview lists every package, found without root, and the exact `sudo` command, which names exactly those packages. The package manager still shows its own list and asks. A dry run never runs `sudo`.
+`molt optimize` removes packages nothing needs: pacman's orphans (`pacman -Qdtq`), `apt-get autoremove`, dnf's and zypper's unneeded packages. The preview lists every package, found without root, and the exact `sudo` command, which names exactly those packages. The package manager still shows its own list and asks. Then upkeep: TRIM on your SSDs (`sudo -- fstrim --all`), your out-of-date font caches (`fc-cache`, no `sudo`), and the DNS cache (`sudo -- resolvectl flush-caches`, only when systemd-resolved runs). A dry run never runs `sudo`.
 
 ```sh
 molt optimize --dry-run            # what nothing needs any more
@@ -96,7 +96,7 @@ molt optimize --only pacman-orphans
 
 | Command | What it does |
 |---|---|
-| `molt optimize` (more) | TRIM, font cache, DNS flush, failed units, SMART health |
+| `molt optimize` (more) | Failed units, SMART health |
 | `molt history` | Show what molt has removed |
 
 ## Options and configuration
