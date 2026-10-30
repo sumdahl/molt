@@ -10,6 +10,7 @@ use molt::analyze;
 use molt::clean::{self, Busy};
 use molt::config::{Decision, Requested};
 use molt::installer;
+use molt::optimize;
 use molt::processes;
 use molt::purge;
 use molt::rules::{Rule, RuleId};
@@ -63,6 +64,9 @@ enum Command {
     /// Free system space (pacman cache, journal, coredumps) through each tool's own
     /// command, run with sudo: preview first, then ask.
     System(SystemArgs),
+    /// Remove packages nothing needs (orphans, autoremove) through each package manager,
+    /// run with sudo: preview first, then ask.
+    Optimize(OptimizeArgs),
 }
 
 #[derive(Clone, Args)]
@@ -141,6 +145,17 @@ struct SystemArgs {
 }
 
 #[derive(Clone, Args)]
+struct OptimizeArgs {
+    /// Run only these tasks: pacman-orphans, apt-autoremove, dnf-autoremove,
+    /// zypper-unneeded.
+    #[arg(long, num_args = 1.., value_name = "ID")]
+    only: Vec<String>,
+    /// Leave these tasks out.
+    #[arg(long, num_args = 1.., value_name = "ID")]
+    skip: Vec<String>,
+}
+
+#[derive(Clone, Args)]
 struct CleanArgs {
     /// Clean only these rules (ids as in `molt scan --json`).
     #[arg(long, num_args = 1.., value_name = "ID")]
@@ -209,6 +224,7 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         Some(Command::Installer(args)) => run_installer(cli, args, &startup),
         Some(Command::Uninstall(args)) => run_uninstall(cli, args, &startup),
         Some(Command::System(args)) => run_system(cli, args, &startup),
+        Some(Command::Optimize(args)) => run_optimize(cli, args, &startup),
         // AN-09: read-only, so a dry run is the same run.
         Some(Command::Analyze(args)) => run_analyze(cli, args, &startup),
         // ST-01, ST-08: read-only, and always 0.
@@ -596,6 +612,47 @@ fn run_system(
     // SY-11: fail closed before the first command.
     let mut log = molt::safe_delete::CommandLog::open(&startup.env.context(&startup.config))?;
     let result = system::act(sudo, &selected, root, search_path, &mut log)?;
+    if cli.json {
+        println!("{}", serde_json::json!({ "result": result }));
+    } else {
+        print!("{result}");
+    }
+    Ok(ExitCode::from(result.exit_code()))
+}
+
+/// OP-01 to OP-08: like `molt system`, the preview, one question, then each command
+/// through sudo.
+fn run_optimize(
+    cli: &Cli,
+    args: &OptimizeArgs,
+    startup: &Startup,
+) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let search_path = &startup.env.search_path;
+    let tasks = optimize::detect(search_path);
+    let selected = match optimize::select(tasks.active.clone(), &args.only, &args.skip) {
+        Ok(selected) => selected,
+        Err(unknown) => {
+            eprintln!("molt: there is no optimize task `{unknown}`; nothing changed");
+            return Ok(ExitCode::from(2));
+        }
+    };
+    let preview = optimize::preview(&tasks, &selected, search_path);
+    if cli.json {
+        println!("{}", serde_json::json!({ "preview": preview }));
+    } else {
+        println!("Preview. Nothing has changed yet:\n");
+        print!("{preview}");
+    }
+    // OP-07: a dry run never reaches sudo.
+    if stop_for_dry_run(startup) || !preview.has_work() {
+        return Ok(ExitCode::SUCCESS);
+    }
+    if !go_ahead(cli, "Run all of the above with sudo?")? {
+        return Ok(ExitCode::SUCCESS);
+    }
+    // SY-11: fail closed before the first command.
+    let mut log = molt::safe_delete::CommandLog::open(&startup.env.context(&startup.config))?;
+    let result = optimize::act(&preview, search_path, &mut log)?;
     if cli.json {
         println!("{}", serde_json::json!({ "result": result }));
     } else {

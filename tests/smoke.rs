@@ -2031,3 +2031,137 @@ fn un_19_un_20_un_21_appimages_icons_and_snap_data_are_leftovers() {
     assert!(exists(&versioned), "a versioned name is a partial match");
     assert!(fs::symlink_metadata(&link).is_ok(), "symlinks are skipped");
 }
+
+/// A pacman with orphans `a` and `b` that removes with `removal`'s exit code.
+fn fake_orphan_pacman(removal: i32) -> String {
+    format!("case \"$1\" in\n-Qdtq) printf 'a\\nb\\n' ;;\n-Rns) exit {removal} ;;\nesac")
+}
+
+#[test]
+fn op_03_op_07_p_05_a_dry_run_lists_the_orphans_and_never_runs_sudo() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let pacman = fake_orphan_pacman(0);
+    let tools = FakeTools::new(&[FAKE_SUDO, ("pacman", &pacman)]);
+    let bin = tools.bin();
+    let before = snapshot(&home.path);
+
+    let out = home.molt(&["optimize", "--dry-run"], &[("PATH", bin)]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(text.contains("    a\n    b\n"), "{text}");
+    assert!(
+        text.contains(&format!("would run: {bin}/sudo -- {bin}/pacman -Rns a b\n")),
+        "{text}"
+    );
+    assert_eq!(tools.ran(), "pacman -Qdtq\n");
+    assert_eq!(snapshot(&home.path), before);
+
+    let piped = home.molt(&["optimize"], &[("PATH", bin)]);
+    assert_eq!(piped.status.code(), Some(1), "no terminal needs --yes");
+    assert!(!tools.ran().contains("sudo"));
+}
+
+#[test]
+fn op_06_op_08_yes_removes_exactly_the_listed_packages() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let pacman = fake_orphan_pacman(0);
+    let tools = FakeTools::new(&[
+        FAKE_SUDO,
+        ("pacman", &pacman),
+        ("apt-get", "case \"$1\" in -s) echo 'Remv old [1]' ;; esac"),
+    ]);
+    let bin = tools.bin();
+
+    let out = home.molt(&["optimize", "--yes", "--json"], &[("PATH", bin)]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let ran = tools.ran();
+    let sudo: Vec<&str> = ran.lines().filter(|l| l.starts_with("sudo")).collect();
+    assert_eq!(
+        sudo,
+        [
+            format!("sudo -- {bin}/pacman -Rns a b"),
+            format!("sudo -- {bin}/apt-get autoremove"),
+        ]
+    );
+    let lines: Vec<serde_json::Value> = stdout(&out)
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(
+        lines[0]["preview"]["tasks"][0]["found"]["packages"][1],
+        "b",
+        "{}",
+        stdout(&out)
+    );
+    assert_eq!(
+        lines[1]["result"]["commands"][0]["exit"],
+        0,
+        "{}",
+        stdout(&out)
+    );
+}
+
+#[test]
+fn op_04_op_05_unsafe_names_and_empty_lists_run_nothing() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    for (body, says) in [
+        ("[ \"$1\" = -Qdtq ] && printf 'a\\n-Rdd\\n'", "left out"),
+        ("[ \"$1\" = -Qdtq ] && exit 1", "nothing to remove"),
+    ] {
+        let home = Home::new();
+        let tools = FakeTools::new(&[FAKE_SUDO, ("pacman", body)]);
+        let out = home.molt(&["optimize", "--yes"], &[("PATH", tools.bin())]);
+        assert!(out.status.success(), "{}", stderr(&out));
+        assert!(stdout(&out).contains(says), "{}", stdout(&out));
+        assert!(!tools.ran().contains("sudo"), "{}", tools.ran());
+    }
+}
+
+#[test]
+fn op_01_op_02_op_08_tasks_are_picked_and_a_failure_doesnt_stop_the_next() {
+    if is_root() {
+        return eprintln!("skipped: molt refuses root (CL-07)");
+    }
+    let home = Home::new();
+    let pacman = fake_orphan_pacman(1);
+    let dnf = "case \"$1\" in repoquery) printf 'x \\n' ;; esac";
+    let tools = FakeTools::new(&[FAKE_SUDO, ("pacman", &pacman), ("dnf", dnf)]);
+    let bin = tools.bin();
+
+    let typo = home.molt(
+        &["optimize", "--only", "orphans", "--yes"],
+        &[("PATH", bin)],
+    );
+    assert_eq!(typo.status.code(), Some(2));
+
+    let out = home.molt(&["optimize", "--yes"], &[("PATH", bin)]);
+    assert_eq!(out.status.code(), Some(3), "{}", stderr(&out));
+    assert!(
+        tools
+            .ran()
+            .contains(&format!("sudo -- {bin}/dnf remove x\n")),
+        "{}",
+        tools.ran()
+    );
+
+    let only = home.molt(
+        &["optimize", "--only", "dnf-autoremove", "--dry-run"],
+        &[("PATH", bin)],
+    );
+    assert!(!stdout(&only).contains("pacman -Rns"), "{}", stdout(&only));
+
+    // OP-02: no sudo, no tasks.
+    let no_sudo = FakeTools::new(&[("pacman", &pacman)]);
+    let out = home.molt(&["optimize", "--yes"], &[("PATH", no_sudo.bin())]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("Inactive"), "{}", stdout(&out));
+    assert!(!no_sudo.ran().contains("-Rns"));
+}

@@ -93,7 +93,7 @@ pub struct Invocation {
 }
 
 impl Invocation {
-    fn find(words: &[&str], search_path: &[PathBuf]) -> Option<Self> {
+    pub(crate) fn find(words: &[&str], search_path: &[PathBuf]) -> Option<Self> {
         let (tool, args) = words.split_first()?;
         Some(Self {
             program: find_tool(tool, search_path)?,
