@@ -1,6 +1,6 @@
 # 013: `molt status`
 
-Status: Implemented (ST-01 to ST-08); Draft (ST-09 to ST-14, #37)
+Status: Implemented (ST-01 to ST-08); Accepted (ST-09 to ST-14, #37)
 Prefix: ST
 
 ## Goal
@@ -48,15 +48,12 @@ Prefix: ST
 - A unit test spawns a child that exits without being waited for and checks it's listed as a zombie, then reaps it.
 - Smoke tests on the real machine, read-only: exit 0, the four sections, the JSON shape, and a snapshot of the temp home unchanged.
 
-## Open questions (#37)
-
-1. **The score.** Is ST-13's formula right? It's deliberately simple and fully listed, so anyone can check it. Change any weights or thresholds you like.
-2. **Temperatures in the text.** Only the hottest reading per sensor (proposed), with all of them in `--json`?
-3. **Units.** Temperatures in °C only (proposed), or follow the locale?
-
 ## Decisions
 
 - **A 200 ms CPU sample**, so "how busy" is measured, not guessed from the load.
 - **Device-backed and network filesystems only**, without pseudo filesystems and bind repeats.
 - **Nearly full at 90 %.**
 - **Each disk is measured on its own thread, with a 1 second limit**, so a dead share can't hang `status`.
+- **The health score is ST-13's formula, as listed.** Simple on purpose, so anyone can check a score by hand.
+- **The text shows the hottest reading per sensor**; `--json` has every reading.
+- **Temperatures in °C.**
