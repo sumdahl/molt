@@ -1,6 +1,6 @@
 # 012: `molt analyze`
 
-Status: Draft
+Status: Accepted
 Prefix: AN
 
 ## Goal
@@ -41,9 +41,9 @@ Prefix: AN
 - Smoke tests: text and `--json` shape, `--depth`, the 20-entry cut and `--all`, exit 3 on partial, exit 1 on a bad path.
 - P-05: a snapshot of the temp folder is unchanged after a run.
 
-## Open questions
+## Decisions
 
-1. **Default folder.** The current directory (proposed, like `du` and `ncdu`), or `~`?
-2. **Depth.** Default 1 (proposed: the folder's children), or 2?
-3. **The 20-entry cut.** 20 per level, then a "more" line (proposed)? Or no cut, since the browser (#34) will be the main way to explore?
-4. **Threads.** Standard library threads only (proposed). The alternative is the `rayon` crate: less code, but a new dependency.
+- **The current directory by default**, like `du` and `ncdu`.
+- **`--depth` 1 by default.**
+- **20 entries per level**, then a "more" line; `--all` shows every entry.
+- **No new dependency.** The parallel walk uses standard library threads, and the browser (#34) will drive the terminal through `rustix`. molt keeps full control of its code (maintainer decision).
