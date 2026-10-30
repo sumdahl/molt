@@ -26,7 +26,7 @@ pub struct ScanReport {
     pub inactive: Vec<RuleId>,
     /// The command that frees what this report shows.
     #[serde(skip)]
-    pub freed_by: &'static str,
+    pub freed_by: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -146,7 +146,7 @@ pub fn measure_findings(
             })
             .collect(),
         inactive: findings.inactive,
-        freed_by: "molt clean",
+        freed_by: "molt clean".to_owned(),
     };
     Ok(Survey {
         report,
