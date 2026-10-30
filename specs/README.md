@@ -61,4 +61,4 @@ What this spec deliberately leaves out.
 | 010 | [Built-in rules](010-built-in-rules.md) | BR | Implemented |
 | 011 | [Locked folders](011-locked-folders.md) | LF | Implemented |
 | 012 | [`molt analyze`](012-analyze.md) | AN | Implemented |
-| 013 | [`molt status`](013-status.md) | ST | Implemented (ST-01..08); Accepted (ST-09..14) |
+| 013 | [`molt status`](013-status.md) | ST | Implemented (ST-01..14) |

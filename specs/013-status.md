@@ -1,6 +1,6 @@
 # 013: `molt status`
 
-Status: Implemented (ST-01 to ST-08); Accepted (ST-09 to ST-14, #37)
+Status: Implemented (ST-01 to ST-14); #38 adds the live view
 Prefix: ST
 
 ## Goal
@@ -26,7 +26,7 @@ Prefix: ST
 
 ### Hardware and the health score (#37)
 
-- **ST-09** **Rates**: disk reads and writes per second for each whole disk (`/proc/diskstats`, sectors × 512, partitions and `loop`/`ram`/`zram` devices left out) and network received and sent per second for each interface except `lo` (`/proc/net/dev`), over the same 200 ms sample as the CPU.
+- **ST-09** **Rates**: disk reads and writes per second for each whole disk (`/proc/diskstats`, sectors × 512, partitions and `loop`/`ram`/`zram` devices left out) and network received and sent per second for each interface except `lo` (`/proc/net/dev`), over the same 200 ms sample as the CPU. The text leaves out interfaces with no traffic in the sample and says how many; `--json` has them all.
 - **ST-10** **Temperatures**: from `/sys/class/hwmon/*/temp*_input` (millidegrees), grouped by sensor `name`, with each reading's `temp*_label` if there is one. The text shows the hottest reading per sensor; `--json` has them all. A reading above its `temp*_crit` (or `temp*_max`, if there's no critical one) is marked `(hot)`.
 - **ST-11** **Fans**: each `fan*_input` (RPM) with its sensor name. A fan at 0 RPM is shown as stopped, not as a fault: many fans stop when cool.
 - **ST-12** **Battery**: for each `/sys/class/power_supply/*` of `type` `Battery`, the charge (`capacity`, %), the `status` (Charging, Discharging, Full, Not charging), and its health as `energy_full` / `energy_full_design` (or the `charge_*` pair) where both exist.

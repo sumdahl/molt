@@ -1506,4 +1506,7 @@ fn st_07_status_json_has_the_stable_shape() {
     assert!((0.0..=100.0).contains(&share), "{root}");
     assert!(json["processes"]["total"].as_u64().unwrap() > 0, "{json}");
     assert!(json["processes"]["zombies"].is_array(), "{json}");
+    // ST-13
+    assert!(json["health"]["score"].as_u64().unwrap() <= 100, "{json}");
+    assert!(json["health"]["reasons"].is_array(), "{json}");
 }
